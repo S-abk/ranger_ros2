@@ -71,7 +71,6 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
   void LoadParameters();
   void SetupSubscription();
   void PublishStateToROS();
-  void PublishSimStateToROS(double linear, double angular);
   void TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr msg);
   double CalculateSteeringAngle(geometry_msgs::msg::Twist msg, double& radius);
   void UpdateOdometry(double linear, double angular, double angle, double dt);
