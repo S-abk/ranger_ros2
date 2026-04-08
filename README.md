@@ -40,12 +40,12 @@ $ colcon build
     
 * first time use ranger-ros package
    ```
-   $ sudo bash /src/ranger_ros2/ranger_bringup/scripts/setup_can2usb.bash
+   $ sudo bash ./src/ranger_ros2/ranger_bringup/scripts/setup_can2usb.bash
    ```
    
 * if not the first time use ranger-ros package(Run this command every time you turn off the power) 
    ```
-   $ sudo bash /src/ranger_ros2/ranger_bringup/scripts/bringup_can2usb.bash
+   $ sudo bash ./src/ranger_ros2/ranger_bringup/scripts/bringup_can2usb.bash
    ```
    
 * Testing command
