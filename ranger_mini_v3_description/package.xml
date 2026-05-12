@@ -7,7 +7,7 @@
     URDF / xacro description and meshes for the AgileX Ranger Mini v3.
     Ported from agilexrobotics/ugv_gazebo_sim (ROS 1) to ROS 2 Jazzy + Gazebo Harmonic.
   </description>
-  <maintainer email="you@example.com">you</maintainer>
+  <maintainer email="solanrewaju2020@fau.edu">Shuaib Olanrewaju</maintainer>
   <license>BSD-3-Clause</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
