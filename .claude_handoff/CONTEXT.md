@@ -212,3 +212,17 @@ edit it.
   for exact strings and whether xacro needs updating in Phase 3.
 - Pruned stale Copilot-style remote branch.
 
+
+## 2026-05-12 — Round 05: Phase 3 Checkpoints A+B
+
+- Fixed gz_ros2_control plugin class-name: GazeboSimROS2ControlPlugin
+  (was ControlSystem; mismatch found in R04d).
+- Added worlds/empty_ground.sdf and launch/gazebo.launch.py to
+  ranger_mini_v3_sim. Launch starts gz sim (headless default),
+  robot_state_publisher, /clock bridge, and spawns the robot
+  at (0,0,0.32). No controllers yet.
+- Phase 3 round 06 will add controller spawners and verify
+  joint commands move the robot.
+- Phase 3 work remains on phase-2-ros2-control branch (small
+  additive work to phase-2's package, no new package created).
+
