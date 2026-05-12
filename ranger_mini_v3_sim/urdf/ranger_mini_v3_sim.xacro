@@ -56,7 +56,7 @@
   </ros2_control>
 
   <gazebo>
-    <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlSystem">
+    <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
       <parameters>$(arg controller_yaml)</parameters>
     </plugin>
   </gazebo>
