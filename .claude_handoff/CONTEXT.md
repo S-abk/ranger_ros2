@@ -226,3 +226,21 @@ edit it.
 - Phase 3 work remains on phase-2-ros2-control branch (small
   additive work to phase-2's package, no new package created).
 
+
+## 2026-05-12 — Round 06: Phase 3 Checkpoints C+D
+
+- Added gazebo_full.launch.py composing gazebo.launch.py +
+  sequential spawning of all 9 controllers via OnProcessExit
+  chain.
+- Confirmed all 9 controllers load and activate: 1
+  joint_state_broadcaster, 4 *_steering_position_controller,
+  4 *_wheel_velocity_controller.
+- /joint_states flows at ~100 Hz, TF resolves for all
+  continuous joints, raw Float64MultiArray commands to
+  controller /commands topics move the corresponding joints.
+- Phase 3 done. Phase 4 (ranger_sim_messenger node) is next:
+  subscribe /cmd_vel, implement 4WS kinematics with the four
+  motion modes, publish to the 8 controller command topics,
+  publish /odom + /system_state + /motion_state +
+  /actuator_state + /battery_state to match the real driver.
+
