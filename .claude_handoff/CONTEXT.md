@@ -15,13 +15,17 @@ plus the matching `round_NN_*.md` handoff in this same directory.
 
 ## Phase plan
 
-| Phase | Branch                       | Package                              | Status      |
-|-------|------------------------------|--------------------------------------|-------------|
-| 1     | `phase-1-description`        | `ranger_mini_v3_description`         | DONE (R01)  |
-| 2     | `phase-2-ros2-control`       | `ranger_mini_v3_sim` (ros2_control)  | not started |
-| 3     | `phase-3-gazebo-bringup`     | `ranger_mini_v3_sim` (Gazebo launch) | not started |
-| 4     | `phase-4-messenger-node`     | `ranger_mini_v3_sim_bringup`         | not started |
-| 5     | `phase-5-interface-parity`   | (real-driver topic parity)           | not started |
+| Phase | Branch                       | Package                              | Status              |
+|-------|------------------------------|--------------------------------------|---------------------|
+| 1     | `phase-1-description`        | `ranger_mini_v3_description`         | DONE (R01, R02 fix) |
+| 2     | `phase-2-ros2-control`       | `ranger_mini_v3_sim` (ros2_control)  | not started         |
+| 3     | `phase-3-gazebo-bringup`     | `ranger_mini_v3_sim` (Gazebo launch) | not started         |
+| 4     | `phase-4-messenger-node`     | `ranger_mini_v3_sim_bringup`         | not started         |
+| 5     | `phase-5-interface-parity`   | (real-driver topic parity)           | not started         |
+
+**Branch base policy (architect decision, R02):** All phase branches
+are based on `jazzy`, NOT `humble` or `main` (no `main` exists).
+Phase 1 was rebased from `humble` → `jazzy` in R02.
 
 ## Sacred constants (do not relitigate)
 
@@ -87,4 +91,60 @@ edit it.
   about the empty `config/` dir vs. the `install(DIRECTORY ... config
   ...)` line in CMakeLists; (3) update `package.xml` maintainer field
   or leave as a per-deployer placeholder? Full detail in
-  `round_01_description.md`.
+  `round_01_description.md`. **All three resolved in R02.**
+
+### 2026-05-12 — Round 02 — Phase 1 ground-plane fix + open-question resolutions
+
+- **Branch:** still `phase-1-description`, now rebased onto `jazzy`
+  (clean — no conflicts; 11 commits replayed).
+- **Architect resolutions applied:**
+  - Q1 (branch base): target is `jazzy`, not `humble`. Future phases
+    branch from `jazzy`.
+  - Q2 (empty `config/`): dropped `config` from
+    `install(DIRECTORY ...)` and removed the empty dir; it returns in
+    Phase 2 with actual content.
+  - Q3 (maintainer): updated `package.xml` to
+    `Shuaib Olanrewaju <solanrewaju2020@fau.edu>` per host git config.
+- **The actual fix:** RViz Fixed Frame changed from `base_link` to
+  `base_footprint`. The URDF was correct — `base_footprint` already
+  sits at ground level under `base_link` via the
+  `base_footprint_joint`. Round 01 just had RViz pointed at the wrong
+  frame, which made the wheels appear to render below the grid.
+- **TF tree is unchanged.** `base_link` remains the URDF root for
+  real-driver TF parity (the real driver publishes `odom -> base_link`,
+  so the sim's messenger node must too in Phase 4).
+- **Nav2 interop note:** consumers can use `base_link` as the body
+  frame (matching the real driver), or treat `base_footprint` as the
+  ground-projected pose; the static `base_footprint_joint` link makes
+  both available. No additional `odom -> base_footprint` static
+  broadcaster needed unless a downstream stack specifically requires
+  it.
+- **Commits added on branch (this round):**
+  - `dd72af7` `fix(sim): ground rviz on base_footprint; clean up phase 1`
+  - + `docs(handoff): round 02 phase 1 ground-plane fix`
+- **Files added/modified this round:**
+  - `ranger_mini_v3_description/CMakeLists.txt` (drop `config` from
+    install dirs)
+  - `ranger_mini_v3_description/package.xml` (maintainer)
+  - `ranger_mini_v3_description/rviz/display.rviz` (Fixed Frame)
+  - `ranger_mini_v3_description/config/` removed (was empty)
+  - `.claude_handoff/.gitignore` (new — excludes editor metadata so
+    `git add -A` stays clean across rounds)
+  - `.claude_handoff/round_02_phase1_fixes.md` (new)
+- **Verification:** xacro still parses (275 lines, exit 0); rebuild
+  ~0.4 s; installed `display.rviz` confirmed to carry
+  `Fixed Frame: base_footprint`. RViz visual re-check deferred to the
+  operator (steps in `round_02_phase1_fixes.md`).
+- **Deviations:** the `git rebase jazzy` invocation replayed 9
+  upstream `humble`-only commits (smalleha + agilexrobotics) onto
+  `phase-1-description`. They modify `ranger_base/`, `ranger_bringup/`,
+  and root `README.md`, which are bootstrap-protected dirs. I did not
+  author or edit them; they came in via the literal rebase command. A
+  local `jazzy` branch had to be created (`git branch jazzy
+  origin/jazzy`) for the literal command to work. Source-fix commit
+  used `git add <files>` rather than `-A` so the handoff `.gitignore`
+  stays in the handoff commit.
+- **Open questions for architect:** (1) should the 9 humble-only
+  upstream commits be dropped from `phase-1-description`? They are
+  outside this port's scope. Detail in `round_02_phase1_fixes.md`.
+  (2) confirm the maintainer identity for the long term.
