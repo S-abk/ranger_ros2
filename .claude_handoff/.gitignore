@@ -1,4 +1,0 @@
-# Editor / viewer metadata that shouldn't pollute the handoff trail.
-.obsidian/
-.vscode/
-.idea/
