@@ -197,3 +197,18 @@ edit it.
 - Phase 2 itself does NOT start Gazebo or controller_manager
   — that's Phase 3.
 
+
+## 2026-05-12 — Round 04d: Phase 3 prerequisites
+
+- Operator installed ros-jazzy-ros-gz-sim, ros-jazzy-ros-gz-bridge,
+  ros-jazzy-controller-manager, ros-jazzy-joint-state-broadcaster,
+  ros-jazzy-position-controllers, ros-jazzy-velocity-controllers,
+  ros-jazzy-gz-ros2-control (the sudo step is operator-side per
+  policy decision in this round).
+- Verified gz sim 8.x runs headless (gz sim -s -r empty.sdf)
+  and ros_gz_bridge can bridge /clock end-to-end.
+- Verified gz_ros2_control plugin class names against the
+  installed libgz_ros2_control-system.so. See round_04d handoff
+  for exact strings and whether xacro needs updating in Phase 3.
+- Pruned stale Copilot-style remote branch.
+
