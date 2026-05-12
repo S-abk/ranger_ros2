@@ -148,3 +148,31 @@ edit it.
   upstream commits be dropped from `phase-1-description`? They are
   outside this port's scope. Detail in `round_02_phase1_fixes.md`.
   (2) confirm the maintainer identity for the long term.
+
+## 2026-05-12 — Rounds 03 / 03b / 03c: Phase 1 reset + remote topology
+
+- Reset `phase-1-description` to S-abk's `origin/jazzy` tip
+  (89c3308), which is 5 commits ahead of `upstream/jazzy` (a1bc206)
+  because the user had already done a humble→jazzy port of Ranger
+  Mini v3 real-robot support in April 2026 (commit a5609b7).
+- Dropped 9 humble-only commits that touched real-robot packages;
+  most of their substance (CalculateSteeringAngle hardening,
+  TwistCmdCallback Ackermann/side-slip logic, v3 launch files,
+  MotorState fields) is already present in S-abk's a5609b7.
+- Added repo-level .gitignore for editor sidecars, OS junk,
+  Python cache, defensive colcon dirs.
+- Remote topology:
+    origin   = git@github.com:S-abk/ranger_ros2.git   (SSH)
+    upstream = https://github.com/agilexrobotics/ranger_ros2.git
+  Sim work pushes only to origin. Upstream is fetch-only for future
+  AgileX driver updates.
+- Policy clarification: "do not modify ranger_base/ranger_bringup/
+  ranger_msgs" applies to our changes only. Inherited state from
+  prior user work on those packages is the baseline we build on.
+- For Phase 4 messenger-node implementation: the authoritative
+  Twist callback / kinematic logic to mirror lives in S-abk's
+  `ranger_base/src/ranger_messenger.cpp` from a5609b7, NOT in the
+  older humble version.
+- Handoff strategy unchanged: .claude_handoff/ tracked on phase
+  branches; phases squash-merge into jazzy at integration time.
+
