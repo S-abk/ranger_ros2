@@ -275,3 +275,25 @@ edit it.
   handoff Open Questions for fix options. Recommend Option A
   (sign-flip in messenger).
 
+
+## 2026-05-12 — Round 08: Fix URDF axis + PARALLEL/SPINNING modes
+
+- **CORRECTION to earlier bootstrap rule:** URDF steering axis
+  is now (0, 0, 1), not (0, 0, -1). The earlier rule was
+  based on incomplete understanding of the real driver's
+  internal angle convention. Standard ROS REP-103 applies:
+  positive joint command = CCW about z = left turn.
+- Implemented PARALLEL mode: common steering angle =
+  atan2(linear.y, linear.x), speed = hypot. Side-slip
+  sub-case (x=0,y!=0) handled with last_nonzero_x.
+- Implemented SPINNING mode: tangent-to-radial wheel angles
+  (with joint-range wrap + velocity sign flip on wrap);
+  wheel speeds sized for commanded body angular velocity.
+- /odom integration uses ParallelModel and SpinningModel
+  per real driver's kinematics_model.hpp.
+- Fixed inherited R07 bug: calculate_steering_angle had a
+  ZeroDivisionError on pure-spin commands (linear.x=0).
+  Smalleha's div-by-zero guard backported to Python.
+- All four motion modes now functional. R09 adds the mock
+  state publishers (/system_state, /motion_state, etc.).
+
