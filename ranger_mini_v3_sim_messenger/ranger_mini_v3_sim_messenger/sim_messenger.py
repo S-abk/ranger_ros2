@@ -19,8 +19,15 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from geometry_msgs.msg import Twist, TransformStamped, Quaternion
 from nav_msgs.msg import Odometry
+from sensor_msgs.msg import BatteryState, JointState
 from std_msgs.msg import Float64MultiArray
 from tf2_ros import TransformBroadcaster
+
+from ranger_msgs.msg import (
+    SystemState, MotionState,
+    ActuatorState, ActuatorStateArray,
+    DriverState, MotorState,
+)
 
 
 # ============================================================
@@ -34,6 +41,37 @@ MAX_ANGULAR_SPEED = 4.8                   # rad/s
 MIN_TURN_RADIUS = 0.4764                  # m
 MAX_STEER_ACKERMANN = 0.601               # rad
 MAX_STEER_PARALLEL  = 1.570               # rad
+
+
+# ============================================================
+# State-mock constants (sim defaults; real values come from
+# ranger_base/src/ranger_messenger.cpp populated from CAN.)
+# ============================================================
+SIM_BATTERY_VOLTAGE = 24.0       # V (typical 24V Li-ion pack)
+SIM_BATTERY_CURRENT = -1.0       # A (negative = discharging)
+SIM_BATTERY_TEMP    = 25.0       # °C
+SIM_BATTERY_SOC     = 1.0        # fraction (0..1)
+SIM_DRIVER_VOLTAGE  = 24.0       # V (driver bus = battery)
+SIM_DRIVER_TEMP     = 35.0       # °C (warm operating)
+SIM_MOTOR_TEMP      = 40.0       # °C
+SIM_DRIVER_STATE_OK = 0          # 0 = no faults
+# Actuator-id mapping (matches real driver's ordering of the
+# 8 actuators in ActuatorStateArray; the real CAN frames put
+# 4 steering then 4 drive). The map is sim-specific because
+# we read from /joint_states; verify against real-robot
+# ordering when commissioning.
+ACTUATOR_INDEX = {
+    # ID 0-3: steering joints
+    0: 'fl_steering_joint',
+    1: 'fr_steering_joint',
+    2: 'rl_steering_joint',
+    3: 'rr_steering_joint',
+    # ID 4-7: drive wheels
+    4: 'fl_wheel',
+    5: 'fr_wheel',
+    6: 'rl_wheel',
+    7: 'rr_wheel',
+}
 
 
 class MotionMode(IntEnum):
@@ -341,6 +379,41 @@ class SimMessenger(Node):
         )
         self.tf_broadcaster = TransformBroadcaster(self) if self.publish_odom_tf else None
 
+        # Subscribe to /joint_states so ActuatorStateArray can carry
+        # realistic motor_angles/motor_speeds. Default ros2_control
+        # publishes /joint_states at the controller manager rate.
+        self._joint_state_qos = QoSProfile(
+            depth=10,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+        )
+        self.last_joint_state = None
+        self.joint_state_sub = self.create_subscription(
+            JointState, '/joint_states',
+            self._joint_state_cb,
+            self._joint_state_qos,
+        )
+
+        # The 4 state publishers — match real driver's topic names
+        # and types exactly (ranger_base/src/ranger_messenger.cpp).
+        state_qos = QoSProfile(
+            depth=10,
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+        )
+        self.system_state_pub = self.create_publisher(
+            SystemState, '/system_state', state_qos
+        )
+        self.motion_state_pub = self.create_publisher(
+            MotionState, '/motion_state', state_qos
+        )
+        self.actuator_state_pub = self.create_publisher(
+            ActuatorStateArray, '/actuator_state', state_qos
+        )
+        self.battery_state_pub = self.create_publisher(
+            BatteryState, '/battery_state', state_qos
+        )
+
         # Controller command publishers — one per joint.
         # Each controller takes Float64MultiArray with one element
         # (its single joint, per controllers.yaml).
@@ -441,6 +514,11 @@ class SimMessenger(Node):
 
         self._publish_wheel_commands(wc)
         self._publish_odometry(msg, now)
+        self._publish_state_topics(now)
+
+    # --------------------------------------------------------
+    def _joint_state_cb(self, msg: JointState):
+        self.last_joint_state = msg
 
     # --------------------------------------------------------
     def _integrate_dual_ackermann(self, v: float, phi: float, dt: float):
@@ -575,6 +653,96 @@ class SimMessenger(Node):
             tf.transform.translation.z = 0.0
             tf.transform.rotation = quat
             self.tf_broadcaster.sendTransform(tf)
+
+    # --------------------------------------------------------
+    def _publish_state_topics(self, now):
+        """Publish /system_state, /motion_state, /actuator_state,
+        /battery_state to match the real-driver interface.
+
+        Static defaults for fields the sim doesn't model
+        (temperatures, voltages, currents). motor_angles and
+        motor_speeds in ActuatorStateArray come from /joint_states
+        when available (more useful for consumers); zero otherwise.
+        """
+        stamp = now.to_msg()
+
+        # SystemState
+        sys_msg = SystemState()
+        sys_msg.header.stamp = stamp
+        sys_msg.vehicle_state = SystemState.VEHICLE_STATE_NORMAL
+        sys_msg.control_mode  = SystemState.CONTROL_MODE_CAN
+        sys_msg.error_code    = 0
+        sys_msg.battery_voltage = SIM_BATTERY_VOLTAGE
+        sys_msg.motion_mode   = int(self.motion_mode)
+        self.system_state_pub.publish(sys_msg)
+
+        # MotionState
+        mot_msg = MotionState()
+        mot_msg.header.stamp = stamp
+        mot_msg.motion_mode  = int(self.motion_mode)
+        self.motion_state_pub.publish(mot_msg)
+
+        # ActuatorStateArray (8 actuators)
+        act_msg = ActuatorStateArray()
+        act_msg.header.stamp = stamp
+
+        # Build a name->(pos, vel) map from the last joint state
+        joint_map = {}
+        if self.last_joint_state is not None:
+            js = self.last_joint_state
+            for i, name in enumerate(js.name):
+                pos = js.position[i] if i < len(js.position) else 0.0
+                vel = js.velocity[i] if i < len(js.velocity) else 0.0
+                joint_map[name] = (pos, vel)
+
+        for actuator_id in range(8):
+            joint_name = ACTUATOR_INDEX[actuator_id]
+            pos, vel = joint_map.get(joint_name, (0.0, 0.0))
+
+            driver = DriverState()
+            driver.driver_voltage     = SIM_DRIVER_VOLTAGE
+            driver.driver_temperature = SIM_DRIVER_TEMP
+            driver.motor_temperature  = SIM_MOTOR_TEMP
+            driver.driver_state       = SIM_DRIVER_STATE_OK
+
+            motor = MotorState()
+            motor.rpm           = int(vel * 60.0 / (2.0 * math.pi))
+            motor.current       = 0.0
+            motor.pulse_count   = 0
+            motor.motor_angles  = float(pos)
+            motor.motor_speeds  = float(vel)
+
+            state = ActuatorState()
+            state.id     = actuator_id
+            state.driver = driver
+            state.motor  = motor
+            act_msg.states.append(state)
+
+        self.actuator_state_pub.publish(act_msg)
+
+        # BatteryState
+        batt = BatteryState()
+        batt.header.stamp = stamp
+        batt.voltage      = SIM_BATTERY_VOLTAGE
+        batt.temperature  = SIM_BATTERY_TEMP
+        batt.current      = SIM_BATTERY_CURRENT
+        batt.percentage   = SIM_BATTERY_SOC
+        batt.charge          = float('nan')
+        batt.capacity        = float('nan')
+        batt.design_capacity = float('nan')
+        batt.power_supply_status = (
+            BatteryState.POWER_SUPPLY_STATUS_UNKNOWN
+        )
+        batt.power_supply_health = (
+            BatteryState.POWER_SUPPLY_HEALTH_UNKNOWN
+        )
+        batt.power_supply_technology = (
+            BatteryState.POWER_SUPPLY_TECHNOLOGY_LION
+        )
+        batt.present = True   # the real driver sets NaN here but
+                              # `present` is bool — interpret as
+                              # "battery present in sim"
+        self.battery_state_pub.publish(batt)
 
     # --------------------------------------------------------
     @staticmethod
