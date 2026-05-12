@@ -297,3 +297,33 @@ edit it.
 - All four motion modes now functional. R09 adds the mock
   state publishers (/system_state, /motion_state, etc.).
 
+
+## 2026-05-12 — Round 09: Phase 4 complete (state publishers)
+
+- Added /system_state, /motion_state, /actuator_state,
+  /battery_state publishers to sim_messenger. Topic types
+  and field population match real driver exactly
+  (ranger_base/src/ranger_messenger.cpp L195-283).
+- Subscribed to /joint_states to populate ActuatorStateArray
+  with real gz values for motor_angles and motor_speeds.
+- Static defaults for fields not modeled in sim:
+    battery 24V, driver temp 35°C, motor temp 40°C,
+    current 0A (motor) / -1A (battery), SoC 1.0.
+- Cleaned up stale xacro comment about (0,0,-1) convention
+  (corrected in R08 but the rationale comment was left
+  behind).
+- Added PARALLEL side-slip sign-combination unit tests
+  (R08 OQ4). All 6 colcon tests pass.
+- **Phase 4 complete.** Sim now has full interface parity
+  with the real driver: same topic names, types, motion-
+  mode semantics. Application code (teleop, nav2, behavior
+  trees) is sim/real-portable.
+
+Remaining work:
+- Squash-merge phase-4-messenger to jazzy.
+- Phase 5: interface-parity audit against the real driver
+  (turn on the real driver, run sim+real side-by-side,
+  confirm topics + QoS match).
+- Phase 6 (optional): polish — sensors, worlds, sim time
+  tuning, ros_gz_bridge static transforms cleanup.
+
