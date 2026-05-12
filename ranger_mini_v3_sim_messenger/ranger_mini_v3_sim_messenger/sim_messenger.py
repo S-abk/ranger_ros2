@@ -72,6 +72,10 @@ def calculate_steering_angle(linear_x: float, angular_z: float):
     ang = abs(angular_z)
     if ang < 1e-6:
         return 0.0, math.inf
+    if lin < 1e-6:
+        # Pure spin (no linear): radius 0 forces SPINNING mode upstream.
+        # Matches smalleha's div-by-zero guard in the real driver.
+        return 0.0, 0.0
     radius = lin / ang
     k = 1 if (angular_z * linear_x) >= 0 else -1
     phi_i = math.atan((WHEELBASE / 2.0) / radius)
@@ -151,6 +155,135 @@ def compute_wheel_commands_dual_ackermann(linear_x: float, inner_phi: float):
     )
 
 
+def compute_wheel_commands_parallel(linear_x: float, linear_y: float,
+                                    last_nonzero_x: float):
+    """Compute all 8 commands for PARALLEL mode.
+
+    All 4 wheels point in the same direction, common angle =
+    atan2(linear_y, linear_x). When linear_x == 0 (pure
+    side-slip), the angle's sign is taken relative to the LAST
+    nonzero linear_x so the robot keeps moving in its
+    "established" forward direction.
+
+    Returns (WheelCommands, used_angle, used_speed) for
+    optional debug logging.
+    """
+    # Direction & magnitude
+    if linear_x == 0.0 and linear_y == 0.0:
+        return WheelCommands(), 0.0, 0.0
+
+    if linear_x == 0.0:
+        # Pure side-slip case.
+        # Sign convention: see ranger_messenger.cpp L437-461.
+        # steer_cmd = atan(y/x) is undefined at x=0; the real driver
+        # uses |atan(y/x)| with sign = sign(last_nonzero_x).
+        # Effective velocity sign comes from linear_y.
+        steer_cmd = math.atan(linear_y / 1e-9 if linear_y > 0 else
+                               -linear_y / 1e-9)  # +pi/2 or -pi/2
+        # Better, exact: pi/2 for sideways drive, signed by last x
+        steer_cmd = math.pi / 2.0
+        if last_nonzero_x < 0:
+            steer_cmd = -steer_cmd
+        speed = abs(linear_y)
+        if linear_y < 0:
+            speed = -speed if last_nonzero_x >= 0 else speed
+        else:
+            speed = speed if last_nonzero_x >= 0 else -speed
+    else:
+        # Standard parallel: angle from atan2, magnitude from hypot.
+        steer_cmd = math.atan2(linear_y, linear_x)
+        if linear_x < 0:
+            steer_cmd = -steer_cmd  # mirror sign for reverse
+        vmag = math.hypot(linear_x, linear_y)
+        speed = vmag if linear_x >= 0 else -vmag
+
+    # Clamp to parallel-mode max angle
+    steer_cmd = max(-MAX_STEER_PARALLEL,
+                    min(MAX_STEER_PARALLEL, steer_cmd))
+
+    # All 4 wheels point the same way; all 4 spin at the same rate
+    w = speed / WHEEL_RADIUS
+    return WheelCommands(
+        steer_fl=steer_cmd, steer_fr=steer_cmd,
+        steer_rl=steer_cmd, steer_rr=steer_cmd,
+        vel_fl=w, vel_fr=w, vel_rl=w, vel_rr=w,
+    ), steer_cmd, speed
+
+
+# ============================================================
+# SPINNING-mode geometry (computed once at module load)
+# ============================================================
+_W = WHEELBASE
+_T = TRACK
+_SPIN_RADIUS = math.hypot(_W / 2.0, _T / 2.0)
+
+
+def _wrap_into_steer_range(angle: float):
+    """Wrap angle to (-pi, pi], then if outside ±MAX_STEER_PARALLEL,
+    flip by π (which reverses wheel direction — physically
+    equivalent for a continuous wheel)."""
+    while angle > math.pi:
+        angle -= 2.0 * math.pi
+    while angle <= -math.pi:
+        angle += 2.0 * math.pi
+    flipped = False
+    if angle > MAX_STEER_PARALLEL:
+        angle -= math.pi
+        flipped = True
+    elif angle < -MAX_STEER_PARALLEL:
+        angle += math.pi
+        flipped = True
+    return angle, flipped
+
+
+# Tangent-direction steering angles for CCW spin at each wheel.
+# The radial vector from origin to each wheel:
+#   fl: ( W/2, +T/2)   fr: ( W/2, -T/2)
+#   rl: (-W/2, +T/2)   rr: (-W/2, -T/2)
+# Tangent (90° CCW of radial) = (-radial.y, radial.x):
+#   fl tangent: (-T/2,  W/2)
+#   fr tangent: ( T/2,  W/2)
+#   rl tangent: (-T/2, -W/2)
+#   rr tangent: ( T/2, -W/2)
+# Angle = atan2(tangent.y, tangent.x), then wrap into joint range.
+_FL_TAN = math.atan2(_W / 2.0, -_T / 2.0)
+_FR_TAN = math.atan2(_W / 2.0,  _T / 2.0)
+_RL_TAN = math.atan2(-_W / 2.0, -_T / 2.0)
+_RR_TAN = math.atan2(-_W / 2.0,  _T / 2.0)
+_FL_STEER, _FL_FLIPPED = _wrap_into_steer_range(_FL_TAN)
+_FR_STEER, _FR_FLIPPED = _wrap_into_steer_range(_FR_TAN)
+_RL_STEER, _RL_FLIPPED = _wrap_into_steer_range(_RL_TAN)
+_RR_STEER, _RR_FLIPPED = _wrap_into_steer_range(_RR_TAN)
+
+
+def compute_wheel_commands_spinning(angular_z: float):
+    """Compute all 8 commands for SPINNING mode.
+
+    All 4 wheels point tangent to a circle centered at the
+    vehicle origin; each spins at the angular velocity required
+    to make the body yaw at the commanded angular_z.
+    """
+    # Clamp body angular velocity
+    w_body = max(-MAX_ANGULAR_SPEED,
+                 min(MAX_ANGULAR_SPEED, angular_z))
+
+    # Wheel angular velocity: linear ground speed = w_body * spin_radius;
+    # wheel angular velocity = ground_speed / wheel_radius.
+    wheel_speed = (w_body * _SPIN_RADIUS) / WHEEL_RADIUS
+
+    # If a wheel's steering was flipped by π during range-wrap,
+    # its physical "forward" direction reversed, so its velocity
+    # commanded must also flip.
+    return WheelCommands(
+        steer_fl=_FL_STEER, steer_fr=_FR_STEER,
+        steer_rl=_RL_STEER, steer_rr=_RR_STEER,
+        vel_fl=(-wheel_speed if _FL_FLIPPED else wheel_speed),
+        vel_fr=(-wheel_speed if _FR_FLIPPED else wheel_speed),
+        vel_rl=(-wheel_speed if _RL_FLIPPED else wheel_speed),
+        vel_rr=(-wheel_speed if _RR_FLIPPED else wheel_speed),
+    )
+
+
 # ============================================================
 # The node
 # ============================================================
@@ -181,7 +314,10 @@ class SimMessenger(Node):
         self.theta = 0.0
         self.last_time = None
         self.last_inner_phi = 0.0   # remember for odometry integration
-        self._mode_warned = None
+        self.last_nonzero_x = 1.0   # for parallel side-slip sign
+        self._last_used_angle = 0.0     # parallel mode odom
+        self._last_used_speed = 0.0     # parallel mode odom
+        self._last_used_angular_z = 0.0 # spinning mode odom
 
         # QoS: BestEffort for /cmd_vel (matches typical teleop pubs),
         # Reliable for /odom (downstream usually needs every sample).
@@ -235,6 +371,9 @@ class SimMessenger(Node):
     def _cmd_cb(self, msg: Twist):
         self.last_twist = msg
 
+        if msg.linear.x != 0.0:
+            self.last_nonzero_x = msg.linear.x
+
         # Mode selection — port of TwistCmdCallback (lines 388-414)
         # NOTE: the v1-side-slip branch is skipped (we're v3-only).
         if msg.linear.y != 0.0:
@@ -279,23 +418,29 @@ class SimMessenger(Node):
             # RK4 step (10 substeps for accuracy)
             self._integrate_dual_ackermann(v, central, dt)
 
+        elif self.motion_mode == MotionMode.PARALLEL:
+            wc, used_angle, used_speed = compute_wheel_commands_parallel(
+                msg.linear.x, msg.linear.y, self.last_nonzero_x
+            )
+            self._integrate_parallel(used_speed, used_angle, dt)
+            self._last_used_angle = used_angle
+            self._last_used_speed = used_speed
+            self.last_inner_phi = 0.0
+
+        elif self.motion_mode == MotionMode.SPINNING:
+            w = max(-MAX_ANGULAR_SPEED, min(MAX_ANGULAR_SPEED, msg.angular.z))
+            wc = compute_wheel_commands_spinning(w)
+            # SpinningModel: x,y unchanged; theta += w*dt
+            self.theta += w * dt
+            self._last_used_angular_z = w
+            self.last_inner_phi = 0.0
+
         else:
-            # PARALLEL and SPINNING modes are recognized but their
-            # outputs are not wired yet. Zero commands + a throttled
-            # log so we don't spam.
-            if self._mode_warned != self.motion_mode:
-                self.get_logger().warn(
-                    f'Mode {self.motion_mode.name} recognized but not '
-                    f'yet implemented in Round 07. Wheels zeroed.'
-                )
-                self._mode_warned = self.motion_mode
+            wc = WheelCommands()  # zeros
             self.last_inner_phi = 0.0
 
         self._publish_wheel_commands(wc)
         self._publish_odometry(msg, now)
-        # Reset the suppression flag when we leave a non-implemented mode
-        if self.motion_mode == MotionMode.DUAL_ACKERMAN:
-            self._mode_warned = None
 
     # --------------------------------------------------------
     def _integrate_dual_ackermann(self, v: float, phi: float, dt: float):
@@ -326,6 +471,39 @@ class SimMessenger(Node):
             k4 = f(s4, t + h)
             state = [
                 state[i] + (h / 6.0) * (k1[i] + 2*k2[i] + 2*k3[i] + k4[i])
+                for i in range(3)
+            ]
+            t += h
+        self.position_x, self.position_y, self.theta = state
+
+    # --------------------------------------------------------
+    def _integrate_parallel(self, v: float, phi: float, dt: float):
+        """RK4 of ParallelModel from kinematics_model.hpp.
+
+        State: (x, y, theta). Control: (v, phi).
+        For parallel/side-slip: vehicle translates at angle (theta+phi),
+        yaw unchanged.
+        """
+        def f(state, _t):
+            x, y, th = state
+            return [
+                v * math.cos(th + phi),
+                v * math.sin(th + phi),
+                0.0,
+            ]
+        state = [self.position_x, self.position_y, self.theta]
+        h = dt / 10.0
+        t = 0.0
+        for _ in range(10):
+            k1 = f(state, t)
+            s2 = [state[i] + 0.5 * h * k1[i] for i in range(3)]
+            k2 = f(s2, t + 0.5 * h)
+            s3 = [state[i] + 0.5 * h * k2[i] for i in range(3)]
+            k3 = f(s3, t + 0.5 * h)
+            s4 = [state[i] + h * k3[i] for i in range(3)]
+            k4 = f(s4, t + h)
+            state = [
+                state[i] + (h / 6.0) * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i])
                 for i in range(3)
             ]
             t += h
@@ -370,6 +548,16 @@ class SimMessenger(Node):
             odom.twist.twist.angular.z = (
                 2.0 * last_cmd.linear.x * math.sin(central) / WHEELBASE
             )
+        elif self.motion_mode == MotionMode.PARALLEL:
+            phi = self._last_used_angle
+            speed = self._last_used_speed
+            odom.twist.twist.linear.x = speed * math.cos(phi)
+            odom.twist.twist.linear.y = speed * math.sin(phi)
+            odom.twist.twist.angular.z = 0.0
+        elif self.motion_mode == MotionMode.SPINNING:
+            odom.twist.twist.linear.x = 0.0
+            odom.twist.twist.linear.y = 0.0
+            odom.twist.twist.angular.z = self._last_used_angular_z
         else:
             odom.twist.twist.linear.x = 0.0
             odom.twist.twist.linear.y = 0.0
