@@ -244,3 +244,34 @@ edit it.
   publish /odom + /system_state + /motion_state +
   /actuator_state + /battery_state to match the real driver.
 
+
+## 2026-05-12 — Rounds 07 / 07b / 07c: Phase 4 setup + DUAL_ACKERMAN complete
+
+- Squash-merged phase-2-ros2-control into jazzy (R07).
+- URDF dimensions aligned with real-robot RangerMiniV3Params:
+  wheelbase 0.494 m, track 0.364 m (R07).
+- Created phase-4-messenger branch off updated jazzy.
+- Built ranger_msgs (R07b), ugv_sdk (R07c), ranger_base,
+  ranger_bringup as part of full workspace sweep. All
+  siblings now in install/ — no more "missing dep" surprises.
+- Created ranger_mini_v3_sim_messenger ament_python package
+  and implemented sim_messenger node:
+  - Subscribes /cmd_vel, publishes /odom + 8 controller cmds
+  - DUAL_ACKERMAN mode math ported from real driver
+  - Per-wheel split: inner = atan(W/2 / R),
+                      outer = atan(W/2 / (R+T)),
+                      front/rear mirror-symmetric
+  - RK4 odometry integrator (10 substeps per dt)
+- PARALLEL / SPINNING modes recognized but commands zeroed
+  + one-shot warning. Round 08 implements them.
+- Per-wheel speed uniform (linear.x / wheel_radius) in R07;
+  ICR-aware per-wheel scaling deferred to Round 08 if visible
+  slip becomes a problem.
+- KNOWN BUG (R07c): steering-sign convention — messenger
+  outputs positive wheel angles for left-turn cmd_vel, but URDF
+  axis (0,0,-1) interprets positive as CW (right turn). Forward
+  drive is fine; arc tests turn the wrong direction in gz while
+  /odom integrates the commanded direction. See round 07c
+  handoff Open Questions for fix options. Recommend Option A
+  (sign-flip in messenger).
+
