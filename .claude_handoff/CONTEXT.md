@@ -176,3 +176,24 @@ edit it.
 - Handoff strategy unchanged: .claude_handoff/ tracked on phase
   branches; phases squash-merge into jazzy at integration time.
 
+
+## 2026-05-12 — Round 04c: Squash-merge phase-1 into jazzy + Phase 2 complete
+
+- Squash-merged phase-1-description into jazzy. Fork's jazzy
+  now contains ranger_mini_v3_description package + repo
+  .gitignore. phase-1-description branch retained on origin
+  for forensic history; no further development on it.
+- Eliminates the cross-branch --symlink-install dangling
+  symlink trap from Round 04b. Phase 3, 4, 5 develop in a
+  single source tree against jazzy.
+- phase-2-ros2-control rebased onto updated jazzy; phase-2
+  commit got a new SHA (parent changed). Force-pushed.
+- Phase 2 verification complete: ros2_control block expands,
+  gz_ros2_control plugin tag present, controller YAML resolves,
+  8 command_interfaces + 16 state_interfaces as expected.
+- gz_ros2_control plugin filename verified against installed
+  binaries (see round handoff for actual filename and whether
+  xacro needs updating in Phase 3).
+- Phase 2 itself does NOT start Gazebo or controller_manager
+  — that's Phase 3.
+
