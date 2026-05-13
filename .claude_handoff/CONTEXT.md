@@ -344,3 +344,20 @@ Remaining work:
 Phase 4 work complete. Next: squash-merge phase-4-messenger
 to jazzy.
 
+
+## 2026-05-12 — Round 13: Sim README + R12 correction
+
+- Added ranger_mini_v3_sim/README.md documenting the sim
+  launch file hierarchy. The key clarification: use
+  gazebo_full.launch.py (controllers loaded), not the
+  shorter-named gazebo.launch.py (no controllers, robot
+  will appear stationary).
+- Added a prominent warning docstring at the top of
+  gazebo.launch.py pointing users to gazebo_full.launch.py.
+- Appended an architect correction to R12's handoff: the
+  "transient DDS state" conclusion was wrong; the actual
+  cause was using the wrong launch file.
+
+Phase 4 is genuinely complete and functional. Recommended
+next: squash-merge phase-4-messenger to jazzy.
+

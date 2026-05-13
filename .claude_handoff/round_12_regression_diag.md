@@ -297,3 +297,34 @@ detail; the R12 evidence is that it doesn't.
    runtime visibility; all four motion modes work. Recommended
    next: squash-merge phase-4-messenger to jazzy and proceed to
    Phase 5 (real-driver-side-by-side audit).
+
+
+---
+
+## Architect's correction (added 2026-05-12)
+
+The "root cause" stated above is **incorrect**. The R12
+symptom was NOT a transient DDS / shared-memory state issue.
+
+**Actual cause:** the user had been launching
+`gazebo.launch.py` (robot only, NO controllers) instead of
+`gazebo_full.launch.py` (robot + controllers). With no
+controllers loaded, the messenger published wheel commands
+into the void and the wheels stayed stationary.
+
+Claude Code's R12 diagnostic used `gazebo_full.launch.py` in
+its own commands. Its verification therefore showed the
+system working end-to-end — but that proved nothing about
+the user's original failure, which was using a different
+launch.
+
+The /dev/shm cleanup was not the fix. It just happened to
+precede the use of the correct launch command.
+
+Lesson logged: when a user reports a symptom, the first
+diagnostic step is "what command did you actually type?" —
+not "let me run my own commands and see if I can reproduce."
+
+See R13's README addition (`ranger_mini_v3_sim/README.md`)
+for the documented launch-file hierarchy and a docstring
+warning at the top of `gazebo.launch.py`.
