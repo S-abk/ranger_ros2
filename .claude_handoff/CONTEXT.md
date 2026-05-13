@@ -327,3 +327,20 @@ Remaining work:
 - Phase 6 (optional): polish — sensors, worlds, sim time
   tuning, ros_gz_bridge static transforms cleanup.
 
+
+## 2026-05-12 — Rounds 10 + 11 + 11b: /clock QoS hardening
+
+- R10 observed /odom stuck (gz moving, messenger frozen).
+- R11 baseline couldn't reproduce: mean_dt = 0.0200s,
+  /odom and gz agreed within 5mm. R10 symptom appears
+  state-dependent.
+- R11b applied defensive QoS fix anyway: explicit RELIABLE
+  + KEEP_LAST(1) on /clock via parameter_bridge YAML
+  config form.
+- Added permanent tick_diag INFO log (every 50 ticks) for
+  future clock-issue visibility.
+- All four motion modes still functional post-fix.
+
+Phase 4 work complete. Next: squash-merge phase-4-messenger
+to jazzy.
+
