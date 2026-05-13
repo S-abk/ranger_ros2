@@ -361,3 +361,30 @@ to jazzy.
 Phase 4 is genuinely complete and functional. Recommended
 next: squash-merge phase-4-messenger to jazzy.
 
+
+
+## Standing principle (added after R13 retro)
+
+**When a user reports a symptom, the first diagnostic step is
+"what command did you actually type?" — not "let me run my own
+commands and see if I can reproduce."**
+
+R12 spent a full round chasing a phantom DDS state issue.
+Claude Code's diagnostic ran the correct launch command;
+the user had been running the wrong one. The verification
+showed everything working but proved nothing about the
+user's experience. The two were testing different things.
+
+Future blocked / failing rounds that follow a user-reported
+symptom should:
+1. First ask the user for the literal commands they typed and
+   the verbatim error / observation they saw.
+2. Reproduce on the user's exact command sequence before
+   running anything else.
+3. Only then run independent diagnostics if step 2 doesn't
+   reveal the cause.
+
+Cost: one short user message. Benefit: avoiding the failure
+mode where a confounded variable (different launch command,
+different env, different terminal state) leads to a
+confident wrong diagnosis.
