@@ -352,6 +352,11 @@ class SimMessenger(Node):
         self.theta = 0.0
         self.last_time = None
         self.last_inner_phi = 0.0   # remember for odometry integration
+        # dt diagnostic counters
+        self._tick_count = 0
+        self._dt_sum = 0.0
+        self._dt_max = 0.0
+        self._dt_min = float('inf')
         self.last_nonzero_x = 1.0   # for parallel side-slip sign
         self._last_used_angle = 0.0     # parallel mode odom
         self._last_used_speed = 0.0     # parallel mode odom
@@ -470,6 +475,25 @@ class SimMessenger(Node):
         self.last_time = now
         if dt <= 0.0:
             return
+
+        self._tick_count += 1
+        self._dt_sum += dt
+        if dt > self._dt_max:
+            self._dt_max = dt
+        if dt < self._dt_min:
+            self._dt_min = dt
+        if self._tick_count % 50 == 0:
+            mean_dt = self._dt_sum / 50.0
+            self.get_logger().info(
+                f"tick_diag: count={self._tick_count} "
+                f"mean_dt={mean_dt:.4f}s "
+                f"min_dt={self._dt_min:.4f}s "
+                f"max_dt={self._dt_max:.4f}s "
+                f"sim_time={now.nanoseconds*1e-9:.3f}s"
+            )
+            self._dt_sum = 0.0
+            self._dt_max = 0.0
+            self._dt_min = float('inf')
 
         msg = self.last_twist
         wc = WheelCommands()    # default zeros
