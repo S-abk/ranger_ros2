@@ -17,8 +17,8 @@ This repository contains ROS2 support packages for the Ranger robot bases to pro
 
 ## Agent-focused onboarding
 
-- Repo onboarding guide: `/home/runner/work/ranger_ros2/ranger_ros2/AGENT.md`
-- Quick staged index: `/home/runner/work/ranger_ros2/ranger_ros2/docs/onboarding_index.md`
+- Repo onboarding guide: `AGENT.md`
+- Quick staged index: `docs/onboarding_index.md`
 
 1. Install dependencies
 

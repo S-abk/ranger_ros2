@@ -1,9 +1,9 @@
 # Copilot instructions for ranger_ros2
 
 ## Session defaults
-- Start with `/home/runner/work/ranger_ros2/ranger_ros2/docs/onboarding_index.md`
+- Start with `docs/onboarding_index.md`
 - Keep context focused on the task package(s) only.
-- Treat `/home/runner/work/ranger_ros2/ranger_ros2/.claude_handoff/` as archival.
+- Treat `.claude_handoff/` as archival.
 
 ## Prompt-bloat controls
 - Do not ingest mesh/image/world files unless the task needs geometry or visuals.
