@@ -15,6 +15,11 @@ This repository contains ROS2 support packages for the Ranger robot bases to pro
 
 ## Build the package
 
+## Agent-focused onboarding
+
+- Repo onboarding guide: `AGENT.md`
+- Quick staged index: `docs/onboarding_index.md`
+
 1. Install dependencies
 
 ```bash

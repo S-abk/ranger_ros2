@@ -1,0 +1,14 @@
+# Core driver
+/ranger_base/ @S-abk
+/ranger_bringup/ @S-abk
+/ranger_msgs/ @S-abk
+
+# Simulation packages
+/ranger_mini_v3_description/ @S-abk
+/ranger_mini_v3_sim/ @S-abk
+/ranger_mini_v3_sim_messenger/ @S-abk
+
+# Repo-level onboarding/docs
+/AGENT.md @S-abk
+/docs/onboarding_index.md @S-abk
+/README.md @S-abk
