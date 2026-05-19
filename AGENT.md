@@ -16,7 +16,6 @@ Only read URDF/mesh/world files when the task is explicitly about model visuals,
 
 ## Default context exclusions
 - `.git/**`
-- `.claude_handoff/**`
 - `docs/*.png`
 - `**/meshes/*.dae`
 - `**/meshes/*.{stl,obj,ply}`
@@ -34,5 +33,5 @@ Only read URDF/mesh/world files when the task is explicitly about model visuals,
 - `ranger_msgs`: ROS interface contracts
 
 ## Deep history policy
-`.claude_handoff/` is archival and can be large.  
-Start with current code and package READMEs first; use handoff files only for historical debugging.
+Start with current code and package READMEs first.  
+Use git history and pull requests for historical debugging context.

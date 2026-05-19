@@ -86,7 +86,7 @@ bit-for-bit** (DDS RIHS01 type hashes identical). Sim and
 real are drop-in compatible from any application's
 perspective.
 
-Full parity report: `.claude_handoff/phase5_parity_report.md`.
+Historical parity notes are available in git history and prior pull requests.
 
 ### Things that differ between sim and real
 
@@ -132,8 +132,7 @@ improvements or documented gaps.
    messenger terminal; sim_time should be increasing.
 
 **`tick_diag` shows mean_dt much smaller than 0.0200s.** Possible
-/clock QoS regression — see R10/R11 in `.claude_handoff/` for
-symptoms and fix (already in place via
+/clock QoS regression (fix already in place via
 `config/ros_gz_bridge.yaml`).
 
 **Topic type errors when echoing `/system_state` or other
@@ -166,7 +165,5 @@ find /dev/shm -maxdepth 1 -user $(whoami) -name "fastrtps_*" -delete
 
 ## Development history
 
-Detailed per-round handoff trail is in `.claude_handoff/`
-(rounds 01 through 13). The squash-merged jazzy branch
-contains one commit per phase; phase branches retain the
-full granular history.
+The squash-merged jazzy branch contains one commit per phase;
+phase branches retain the full granular history.
