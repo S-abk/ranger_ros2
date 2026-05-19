@@ -16,7 +16,7 @@ Only read URDF/mesh/world files when the task is explicitly about model visuals,
 
 ## Default context exclusions
 - `.git/**`
-- `.claude_handoff/**`
+- `.claude_handoff/**` (except `.claude_handoff/CONTEXT.md` when needed)
 - `docs/*.png`
 - `**/meshes/*.dae`
 - `**/meshes/*.{stl,obj,ply}`
@@ -35,4 +35,5 @@ Only read URDF/mesh/world files when the task is explicitly about model visuals,
 
 ## Deep history policy
 `.claude_handoff/` is archival and can be large.  
-Start with current code and package READMEs first; use handoff files only for historical debugging.
+Start with current code and package READMEs first.  
+If handoff context is required, read only `.claude_handoff/CONTEXT.md`.

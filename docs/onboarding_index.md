@@ -17,6 +17,6 @@ Use this checklist to keep onboarding focused and fast.
    - `ranger_mini_v3_sim/urdf/ranger_mini_v3_sim.xacro`
    - `ranger_mini_v3_description/urdf/ranger_mini_v3.xacro`
 8. Avoid by default:
-   - `.claude_handoff/`
+   - `.claude_handoff/` (except `.claude_handoff/CONTEXT.md` when needed)
    - `ranger_mini_v3_description/meshes/`
    - `docs/*.png`
