@@ -3,7 +3,6 @@
 ## Session defaults
 - Start with `docs/onboarding_index.md`
 - Keep context focused on the task package(s) only.
-- Treat `.claude_handoff/` as archival; if needed, use only `.claude_handoff/CONTEXT.md`.
 
 ## Prompt-bloat controls
 - Do not ingest mesh/image/world files unless the task needs geometry or visuals.
