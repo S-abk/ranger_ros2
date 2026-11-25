@@ -26,7 +26,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-// INV-1, INV-4 (dispatch) and INV-6 for the twist-to-command function.
+// The twist-to-command function: signs, statelessness, dispatch (one mode frame and one motion
+// frame per twist) and limits.
 
 #include <gtest/gtest.h>
 
@@ -88,9 +89,9 @@ int Sign(double v)
   return (v > 0.0) - (v < 0.0);
 }
 
-// One component of INV-1: never opposite; zero where the mode drops it. A pure sideways move
-// keeps a forward residue of |speed| * cos(max_steer_angle_parallel) because the steering limit
-// (1.570 rad) is 0.8 mrad short of 90 degrees; that residue is allowed and documented.
+// One component of the sign rule: never opposite; zero where the mode drops it. A pure sideways
+// move keeps a forward residue of |speed| * cos(max_steer_angle_parallel) because the steering
+// limit (1.570 rad) is 0.8 mrad short of 90 degrees; that residue is allowed and documented.
 void ExpectComponent(
   double twist, double realised, bool dropped, double residual_allowed, const char * what,
   double vx, double vy, double wz)
@@ -211,7 +212,7 @@ TEST(CommandFromTwist, NoResultDependsOnEarlierCommands)
 }
 
 // One row per sign case, as encoded in the frame. "seen" rows are frames that appear in a
-// recording of the real base; the others are unverified until the hardware test list is run.
+// recording of the real base; the others are unverified on the real base.
 TEST(CommandFromTwist, SignCaseTable)
 {
   struct Row
@@ -351,7 +352,7 @@ TEST(CommandFromTwist, NonFiniteTwistIsRejected)
   }
 }
 
-TEST(CommandFromTwist, ZeroPolicyDefaultIsTodaysStop)
+TEST(CommandFromTwist, ZeroPolicyDefaultIsTheEarlierStop)
 {
   for (uint8_t mode : {0, 1, 2, 3}) {
     const ml::MotionCommand c =

@@ -26,7 +26,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-// INV-3: topic names and message definitions keep what they had on the jazzy branch. Each
+// Contract: topic names and message definitions keep what they had on the jazzy branch. Each
 // existing installed .msg must equal its jazzy text; new information is in new types.
 
 #include <gtest/gtest.h>

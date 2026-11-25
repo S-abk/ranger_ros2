@@ -178,8 +178,8 @@ inline Result Run(const std::vector<Row> & rows, const ml::Limits & limits)
   return result;
 }
 
-// The INV-2 tolerance frozen in stage 1 (agent tool inv2_check.py); the gyro columns are already
-// bias-corrected and shifted by 35 ms.
+// Heading tolerance against the recorded gyroscope, fixed before the integrator was written.
+// The gyro columns are already bias-corrected and shifted by 35 ms.
 struct Inv2
 {
   double max_abs_err = 0.0;

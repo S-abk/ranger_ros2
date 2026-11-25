@@ -68,7 +68,7 @@ void RangerROSMessenger::LoadParameters() {
   update_rate_ = node_->declare_parameter<int>("update_rate", 50);
   odom_topic_name_ = node_->declare_parameter<std::string>("odom_topic_name", "odom");
   publish_odom_tf_ = node_->declare_parameter<bool>("publish_odom_tf",false);
-  // Proposal, off by default (today's behaviour): a zero command keeps the base's reported
+  // Off by default (the earlier behaviour). When on, a zero command keeps the base's reported
   // oblique or spin mode so the wheels do not swing back at every stop.
   zero_command_keeps_mode_ =
       node_->declare_parameter<bool>("zero_command_keeps_mode", false);

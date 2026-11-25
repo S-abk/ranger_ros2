@@ -90,7 +90,7 @@ if(BUILD_TESTING)
     MSG_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/msg_jazzy"
     RANGER_MSGS_MSG_DIR="${ranger_msgs_DIR}/../msg")
 
-  # replay tool for the report (not installed)
+  # offline replay tool (not installed)
   add_executable(odom_replay test/odom_replay.cpp)
   target_link_libraries(odom_replay ranger_base_logic)
 endif()

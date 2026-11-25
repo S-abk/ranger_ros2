@@ -26,8 +26,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-// INV-2 rule tests for the odometry integrator (synthetic sequences; the replay of the real
-// recordings is in test_replay_fixtures.cpp).
+// Rule tests for the odometry integrator (synthetic sequences; the replay of real recordings is
+// in test_replay_recordings.cpp).
 
 #include <gtest/gtest.h>
 
@@ -157,7 +157,7 @@ TEST(OdometryIntegrator, SpinRateFromWheelSpeedSignAndRadius)
   // Anticlockwise: positive wheel speed gives a positive spin rate (verified on the real base).
   EXPECT_GT(ml::SpinRateFromWheelSpeed(0.064, kV3), 0.0);
   EXPECT_DOUBLE_EQ(ml::SpinRateFromWheelSpeed(0.064, kV3), 0.064 / ml::SpinRadius(kV3));
-  // Clockwise: UNVERIFIED on the real base (hardware test list); this only fixes the convention.
+  // Clockwise: UNVERIFIED on the real base (not yet measured); this only fixes the convention.
   EXPECT_LT(ml::SpinRateFromWheelSpeed(-0.064, kV3), 0.0);
 }
 

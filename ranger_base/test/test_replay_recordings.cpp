@@ -26,9 +26,9 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-// INV-2 on the real recordings: the odometry integrator replayed over feedback recovered from
-// eleven recordings of the real base, against the gyroscope, with the tolerance frozen before
-// the new code ran. The old driver's /odom yaw is checked too, to show the test can fail.
+// Heading on real recordings: the odometry integrator replayed over feedback recovered from
+// eleven recordings of the real base, against the gyroscope, with a tolerance fixed before
+// the integrator was written. The old driver's /odom yaw is checked too, to show the test can fail.
 
 #include <gtest/gtest.h>
 
@@ -84,7 +84,7 @@ TEST(ReplayRecordings, NewOdometryFollowsTheGyro)
   }
 }
 
-TEST(ReplayRecordings, OldOdometryFailsWhereTheBaseFactsSayItIsWrong)
+TEST(ReplayRecordings, OldOdometryFailsWhereItIsKnownToBeWrong)
 {
   for (const char * name : {"y_stop_20", "E_spin"}) {
     SCOPED_TRACE(name);

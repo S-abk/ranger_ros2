@@ -112,7 +112,18 @@ struct MotionCommand
 };
 
 // Stateless: the result depends on the twist, the limits and the zero policy only.
-// See the driver documentation for the table of cases.
+// Exact zeros of either sign are equal; tiny non-zero values are not rounded away.
+//   vy != 0, vx != 0:  oblique, steering atan(vy / vx), speed sign(vx) * hypot(vx, vy);
+//                      wz is dropped.
+//   vy != 0, vx == 0:  oblique, steering +max_steer_angle_parallel, speed vy; wz is dropped.
+//                      (The steering wraps here: a tiny x of the other sign asks for -90 degrees.)
+//   vy == 0, |wz| < kMinAngularForArc:  Ackermann straight, speed vx; a non-zero wz is dropped.
+//   vy == 0, |vx| / |wz| >= min_turn_radius:  Ackermann arc, inner angle atan((L / 2) / R)
+//                      signed by wz * vx, clamped to max_steer_angle_ackermann; speed vx.
+//   vy == 0, |vx| / |wz| < min_turn_radius:  spin at wz, clamped to max_angular_speed;
+//                      vx is dropped.
+//   all zero:  Ackermann with speed 0 and steering 0, unless the zero policy keeps the mode.
+//   not finite:  rejected (valid == false), nothing is sent.
 MotionCommand CommandFromTwist(
   double vx, double vy, double wz, const Limits & limits,
   const ZeroCommandPolicy & zero_policy);
@@ -186,7 +197,7 @@ double SpinRadius(const Limits & limits);
 
 // The one place that turns a measured wheel speed into a spin rate (spin coast after a stop).
 // Sign verified for an anticlockwise spin only: the recorded wheel speed was positive while the
-// gyro showed a positive yaw rate. The clockwise sign is UNVERIFIED (hardware test list).
+// gyro showed a positive yaw rate. The clockwise sign is UNVERIFIED (not yet measured).
 double SpinRateFromWheelSpeed(double wheel_speed, const Limits & limits);
 
 // Whether a measured wheel angle is possible in a geometry.
