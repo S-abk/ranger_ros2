@@ -303,7 +303,11 @@ void RangerROSMessenger::PublishStateToROS() {
 
     sensor_msgs::msg::BatteryState batt_msg;
     batt_msg.header.stamp = current_time_;
-    batt_msg.voltage = common_sensor_state.bms_basic_state.voltage;
+    // The SDK's Ranger Mini 3.0 class passes the BMS voltage on in units of 0.1 V (its Mini 2.0
+    // class applies the 0.1 itself); /system_state.battery_voltage comes from another frame and
+    // is already in volts.
+    const double bms_voltage_scale = robot_type_ == RangerSubType::kRangerMiniV3 ? 0.1 : 1.0;
+    batt_msg.voltage = common_sensor_state.bms_basic_state.voltage * bms_voltage_scale;
     batt_msg.temperature = common_sensor_state.bms_basic_state.temperature;
     batt_msg.current = common_sensor_state.bms_basic_state.current;
     batt_msg.percentage = common_sensor_state.bms_basic_state.battery_soc;
