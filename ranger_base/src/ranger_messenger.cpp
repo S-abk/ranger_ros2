@@ -166,6 +166,8 @@ void RangerROSMessenger::SetupSubscription() {
       node_->create_publisher<ranger_msgs::msg::SystemState>(topics::kSystemState, 10);
   motion_state_pub_ =
       node_->create_publisher<ranger_msgs::msg::MotionState>(topics::kMotionState, 10);
+  motion_feedback_pub_ = node_->create_publisher<ranger_msgs::msg::MotionFeedback>(
+      topics::kMotionFeedback, 10);
   actuator_state_pub_ =
       node_->create_publisher<ranger_msgs::msg::ActuatorStateArray>(topics::kActuatorState, 10);
   odom_pub_ = node_->create_publisher<nav_msgs::msg::Odometry>(odom_topic_name_, 10);
@@ -222,24 +224,33 @@ void RangerROSMessenger::PublishStateToROS() {
     system_state_pub_->publish(system_msg);
   }
 
-  // publish motion mode, and what the base reports about its motion
+  // publish motion mode
   {
     ranger_msgs::msg::MotionState motion_msg;
     motion_msg.header.stamp = current_time_;
     motion_msg.motion_mode = state.motion_mode_state.motion_mode;
-    motion_msg.mode_changing = sample.mode_changing;
-    motion_msg.linear_velocity = sample.linear_velocity;
-    motion_msg.angular_velocity = sample.angular_velocity;
-    motion_msg.steering_angle = sample.steering_angle;
-    motion_msg.wheel_angles = {
-        actuator_state.motor_angles.angle_5, actuator_state.motor_angles.angle_6,
-        actuator_state.motor_angles.angle_7, actuator_state.motor_angles.angle_8};
-    motion_msg.wheel_speeds = {
-        actuator_state.motor_speeds.speed_1, actuator_state.motor_speeds.speed_2,
-        actuator_state.motor_speeds.speed_3, actuator_state.motor_speeds.speed_4};
-    motion_msg.odometry_geometry = static_cast<uint8_t>(odometry_step.geometry);
 
     motion_state_pub_->publish(motion_msg);
+  }
+
+  // publish what the base reports about its motion (switching flag, reported and measured state)
+  {
+    ranger_msgs::msg::MotionFeedback feedback_msg;
+    feedback_msg.header.stamp = current_time_;
+    feedback_msg.motion_mode = sample.reported_mode;
+    feedback_msg.mode_changing = sample.mode_changing;
+    feedback_msg.steering_angle = sample.steering_angle;
+    feedback_msg.linear_velocity = sample.linear_velocity;
+    feedback_msg.angular_velocity = sample.angular_velocity;
+    feedback_msg.wheel_angles = {
+        actuator_state.motor_angles.angle_5, actuator_state.motor_angles.angle_6,
+        actuator_state.motor_angles.angle_7, actuator_state.motor_angles.angle_8};
+    feedback_msg.wheel_speeds = {
+        actuator_state.motor_speeds.speed_1, actuator_state.motor_speeds.speed_2,
+        actuator_state.motor_speeds.speed_3, actuator_state.motor_speeds.speed_4};
+    feedback_msg.odometry_geometry = static_cast<uint8_t>(odometry_step.geometry);
+
+    motion_feedback_pub_->publish(feedback_msg);
   }
 
   // publish actuator state

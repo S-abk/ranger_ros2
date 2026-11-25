@@ -27,7 +27,7 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 // INV-3: topic names and message definitions keep what they had on the jazzy branch. Each
-// installed .msg must start with its jazzy text (types only grow at the end).
+// existing installed .msg must equal its jazzy text; new information is in new types.
 
 #include <gtest/gtest.h>
 
@@ -65,7 +65,7 @@ std::string Normalise(std::string text)
 
 }  // namespace
 
-TEST(MessageContract, InstalledDefinitionsStartWithTheJazzyText)
+TEST(MessageContract, ExistingDefinitionsEqualTheJazzyText)
 {
   for (const char * name : {"ActuatorState", "ActuatorStateArray", "DriverState", "MotionState",
       "MotorState", "SystemState"})
@@ -77,7 +77,7 @@ TEST(MessageContract, InstalledDefinitionsStartWithTheJazzyText)
       ReadFile(std::string(RANGER_MSGS_MSG_DIR) + "/" + name + ".msg"));
     ASSERT_FALSE(jazzy.empty());
     ASSERT_FALSE(installed.empty());
-    EXPECT_EQ(installed.compare(0, jazzy.size(), jazzy), 0) << "installed:\n" << installed;
+    EXPECT_EQ(installed, jazzy);
   }
 }
 
@@ -87,6 +87,7 @@ TEST(TopicContract, NamesAreUnchanged)
   EXPECT_STREQ(topics::kCmdVel, "/cmd_vel");
   EXPECT_STREQ(topics::kSystemState, "/system_state");
   EXPECT_STREQ(topics::kMotionState, "/motion_state");
+  EXPECT_STREQ(topics::kMotionFeedback, "/motion_feedback");
   EXPECT_STREQ(topics::kActuatorState, "/actuator_state");
   EXPECT_STREQ(topics::kBatteryState, "/battery_state");
   EXPECT_STREQ(topics::kDefaultOdom, "odom");

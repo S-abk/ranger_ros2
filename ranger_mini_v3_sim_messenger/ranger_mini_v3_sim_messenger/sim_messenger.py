@@ -24,7 +24,7 @@ from std_msgs.msg import Float64MultiArray
 from tf2_ros import TransformBroadcaster
 
 from ranger_msgs.msg import (
-    SystemState, MotionState,
+    SystemState, MotionState, MotionFeedback,
     ActuatorState, ActuatorStateArray,
     DriverState, MotorState,
 )
@@ -394,6 +394,9 @@ class SimMessenger(Node):
         self.motion_state_pub = self.create_publisher(
             MotionState, '/motion_state', state_qos
         )
+        self.motion_feedback_pub = self.create_publisher(
+            MotionFeedback, '/motion_feedback', state_qos
+        )
         self.actuator_state_pub = self.create_publisher(
             ActuatorStateArray, '/actuator_state', state_qos
         )
@@ -683,18 +686,23 @@ class SimMessenger(Node):
         mot_msg = MotionState()
         mot_msg.header.stamp = stamp
         mot_msg.motion_mode  = int(self.motion_mode)
-        # Appended fields (sim: the commanded values stand in for the reported ones).
-        mot_msg.mode_changing = False
-        if self.motion_mode == MotionMode.PARALLEL:
-            mot_msg.linear_velocity = float(self._last_used_speed)
-            mot_msg.steering_angle = float(self._last_used_angle)
-        elif self.motion_mode == MotionMode.SPINNING:
-            mot_msg.angular_velocity = float(self._last_used_angular_z)
-        elif self.motion_mode == MotionMode.DUAL_ACKERMAN:
-            mot_msg.linear_velocity = float(self.last_twist.linear.x)
-            mot_msg.steering_angle = float(self.last_inner_phi)
-        mot_msg.odometry_geometry = int(self.motion_mode)
         self.motion_state_pub.publish(mot_msg)
+
+        # MotionFeedback (sim: the commanded values stand in for the reported ones)
+        fb_msg = MotionFeedback()
+        fb_msg.header.stamp = stamp
+        fb_msg.motion_mode = int(self.motion_mode)
+        fb_msg.mode_changing = False
+        if self.motion_mode == MotionMode.PARALLEL:
+            fb_msg.linear_velocity = float(self._last_used_speed)
+            fb_msg.steering_angle = float(self._last_used_angle)
+        elif self.motion_mode == MotionMode.SPINNING:
+            fb_msg.angular_velocity = float(self._last_used_angular_z)
+        elif self.motion_mode == MotionMode.DUAL_ACKERMAN:
+            fb_msg.linear_velocity = float(self.last_twist.linear.x)
+            fb_msg.steering_angle = float(self.last_inner_phi)
+        fb_msg.odometry_geometry = int(self.motion_mode)
+        self.motion_feedback_pub.publish(fb_msg)
 
         # ActuatorStateArray (8 actuators)
         act_msg = ActuatorStateArray()

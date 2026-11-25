@@ -36,6 +36,7 @@
 //user msg include
 #include <ranger_msgs/msg/system_state.hpp>
 #include <ranger_msgs/msg/motion_state.hpp>
+#include <ranger_msgs/msg/motion_feedback.hpp>
 #include <ranger_msgs/msg/actuator_state_array.hpp>
 
 #include "ranger_msgs/msg/actuator_state.hpp"
@@ -104,6 +105,7 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
 
   rclcpp::Publisher<ranger_msgs::msg::SystemState>::SharedPtr system_state_pub_;
   rclcpp::Publisher<ranger_msgs::msg::MotionState>::SharedPtr motion_state_pub_;
+  rclcpp::Publisher<ranger_msgs::msg::MotionFeedback>::SharedPtr motion_feedback_pub_;
   rclcpp::Publisher<ranger_msgs::msg::ActuatorStateArray>::SharedPtr actuator_state_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_state_pub_;

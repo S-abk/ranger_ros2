@@ -39,6 +39,7 @@ namespace topics
 constexpr char kCmdVel[] = "/cmd_vel";
 constexpr char kSystemState[] = "/system_state";
 constexpr char kMotionState[] = "/motion_state";
+constexpr char kMotionFeedback[] = "/motion_feedback";
 constexpr char kActuatorState[] = "/actuator_state";
 constexpr char kBatteryState[] = "/battery_state";
 constexpr char kDefaultOdom[] = "odom";   // default of the odom_topic_name parameter
