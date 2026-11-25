@@ -162,7 +162,7 @@ TEST(OdometryIntegrator, SpinRateFromWheelSpeedSignAndRadius)
 }
 
 // Spin stop: reported Ackermann at once, wheels still at the spin angle, body still turning.
-TEST(OdometryIntegrator, SpinStopCoastsOnWheelSpeedThenNothingThenAckermann)
+TEST(OdometryIntegrator, SpinStopCoastsOnWheelSpeedThenReportedMode)
 {
   ml::OdometryIntegrator odom(kV3);
   for (int i = 0; i < 20; ++i) {
@@ -177,16 +177,17 @@ TEST(OdometryIntegrator, SpinStopCoastsOnWheelSpeedThenNothingThenAckermann)
   EXPECT_GT(s.theta, theta0);
   s = odom.Step(Sample(0, 0.0, 0.0, 0.0, 0.81, 0.05), kDt);
   EXPECT_EQ(s.geometry, ml::Geometry::kSpin);
-  // between the spin band and the Ackermann range: nothing integrated, zero twist
-  const double theta1 = s.theta;
+  // between the spin band and the Ackermann range: the reported mode on the motion-state values
+  const double x1 = s.x;
   s = odom.Step(Sample(0, 0.004, 0.0, 0.0, 0.72, 0.02), kDt);
-  EXPECT_EQ(s.geometry, ml::Geometry::kNone);
-  EXPECT_EQ(s.theta, theta1);
-  EXPECT_EQ(s.vx, 0.0);
-  EXPECT_EQ(s.wz, 0.0);
-  // not resumed within the same hold, even if the angle comes back into the band
+  EXPECT_EQ(s.geometry, ml::Geometry::kAckermann);
+  EXPECT_EQ(s.source, ml::InputSource::kMotionState);
+  EXPECT_EQ(s.vx, 0.004);
+  EXPECT_NE(s.x, x1);
+  // the spin hold is not resumed within the same hold, even if the angle comes back to the band
   s = odom.Step(Sample(0, 0.0, 0.0, 0.0, 0.85, 0.02), kDt);
-  EXPECT_EQ(s.geometry, ml::Geometry::kNone);
+  EXPECT_EQ(s.geometry, ml::Geometry::kAckermann);
+  EXPECT_EQ(s.source, ml::InputSource::kMotionState);
   // inside the Ackermann range: the reported mode with the motion-state values
   s = odom.Step(Sample(0, 0.002, 0.5, 0.0, 0.5, 0.01), kDt);
   EXPECT_EQ(s.geometry, ml::Geometry::kAckermann);
@@ -197,13 +198,13 @@ TEST(OdometryIntegrator, HoldEndsAfterTimeBound)
 {
   ml::OdometryIntegrator odom(kV3);
   odom.Step(Sample(2, 0.0, 0.0, 0.2, 0.935, 0.06), kDt);
-  // wheels stuck between geometries
+  // reported Ackermann with the wheels stuck at the spin angle
   int ticks = 0;
   ml::OdometryStep s{};
   do {
-    s = odom.Step(Sample(0, 0.0, 0.0, 0.0, 0.7, 0.0), kDt);
+    s = odom.Step(Sample(0, 0.0, 0.0, 0.0, 0.935, 0.01), kDt);
     ++ticks;
-  } while (s.geometry == ml::Geometry::kNone && ticks < 1000);
+  } while (s.geometry == ml::Geometry::kSpin && ticks < 1000);
   EXPECT_EQ(s.geometry, ml::Geometry::kAckermann);
   EXPECT_EQ(s.source, ml::InputSource::kMotionState);
   EXPECT_NEAR(ticks * kDt, ml::kMaxHoldSeconds, 1.5 * kDt);
@@ -224,7 +225,8 @@ TEST(OdometryIntegrator, NewReportedModeEndsTheHold)
 {
   ml::OdometryIntegrator odom(kV3);
   odom.Step(Sample(2, 0.0, 0.0, 0.2, 0.935, 0.06), kDt);
-  EXPECT_EQ(odom.Step(Sample(0, 0.0, 0.0, 0.0, 0.7, 0.0), kDt).geometry, ml::Geometry::kNone);
+  EXPECT_EQ(
+    odom.Step(Sample(0, 0.0, 0.0, 0.0, 0.7, 0.0), kDt).geometry, ml::Geometry::kAckermann);
   // an oblique command arrives: oblique fits any angle, so the reported mode is used at once
   const ml::OdometryStep s = odom.Step(Sample(1, 0.01, 0.7, 0.0, 0.7, 0.01), kDt);
   EXPECT_EQ(s.geometry, ml::Geometry::kOblique);
@@ -243,8 +245,8 @@ TEST(OdometryIntegrator, ModeChangeWhileRolling)
     EXPECT_EQ(s.source, ml::InputSource::kMotionState);
   }
   {
-    // Ackermann -> spin: Ackermann on the wheel values until the wheels leave its range,
-    // nothing until they reach the spin band, then spin on the motion-state rate
+    // Ackermann -> spin: Ackermann on the wheel values until the wheels leave its range, then
+    // spin on the motion-state rate
     ml::OdometryIntegrator odom(kV3);
     odom.Step(Sample(0, 0.5, 0.3, 0.0, 0.3, 0.5), kDt);
     ml::OdometryStep s = odom.Step(Sample(2, 0.0, 0.0, 0.1, 0.4, 0.4), kDt);
@@ -252,7 +254,8 @@ TEST(OdometryIntegrator, ModeChangeWhileRolling)
     EXPECT_EQ(s.source, ml::InputSource::kWheels);
     EXPECT_EQ(s.vx, 0.4);
     s = odom.Step(Sample(2, 0.0, 0.0, 0.1, 0.7, 0.2), kDt);
-    EXPECT_EQ(s.geometry, ml::Geometry::kNone);
+    EXPECT_EQ(s.geometry, ml::Geometry::kSpin);
+    EXPECT_EQ(s.source, ml::InputSource::kMotionState);
     s = odom.Step(Sample(2, 0.0, 0.0, 0.1, 0.9, 0.05), kDt);
     EXPECT_EQ(s.geometry, ml::Geometry::kSpin);
     EXPECT_EQ(s.source, ml::InputSource::kMotionState);
@@ -273,6 +276,50 @@ TEST(OdometryIntegrator, ModeChangeWhileRolling)
     odom.Step(Sample(2, 0.0, 0.0, 0.2, 0.935, 0.06), kDt);
     const ml::OdometryStep s = odom.Step(Sample(1, 0.02, 0.935, 0.0, 0.935, 0.06), kDt);
     EXPECT_EQ(s.geometry, ml::Geometry::kOblique);
+  }
+}
+
+// Odometry never stops while the base reports a driving mode: for every previous geometry, every
+// reported mode 0, 1, 2 and every wheel angle, something is integrated.
+TEST(OdometryIntegrator, NeverStopsWhileAModeIsReported)
+{
+  const std::vector<ml::FeedbackSample> before = {
+    Sample(0, 0.3, 0.2, 0.0, 0.2, 0.3), Sample(1, 0.1, 1.57, 0.0, 1.57, 0.1),
+    Sample(2, 0.0, 0.0, 0.2, 0.935, 0.06)};
+  for (const ml::FeedbackSample & first : before) {
+    for (uint8_t mode = 0; mode <= 2; ++mode) {
+      for (double angle = -1.6; angle <= 1.6; angle += 0.01) {
+        ml::OdometryIntegrator odom(kV3);
+        odom.Step(first, kDt);
+        double previous_x = 0.0;
+        double previous_y = 0.0;
+        double previous_theta = 0.0;
+        for (int k = 0; k < 100; ++k) {   // 2 s, past the hold time bound
+          const ml::OdometryStep s = odom.Step(Sample(mode, 0.1, angle, 0.2, angle, 0.1), kDt);
+          ASSERT_NE(s.geometry, ml::Geometry::kNone) << static_cast<int>(mode) << " " << angle;
+          EXPECT_TRUE(s.x != previous_x || s.y != previous_y || s.theta != previous_theta);
+          previous_x = s.x;
+          previous_y = s.y;
+          previous_theta = s.theta;
+        }
+      }
+    }
+  }
+}
+
+// The Ranger Mini 3.0's maximum Ackermann angle (0.698 rad) is above the driver's own limit; with
+// the remote driving there, odometry keeps integrating every cycle.
+TEST(OdometryIntegrator, AckermannBeyondTheDriverLimitStillIntegrates)
+{
+  ml::OdometryIntegrator odom(kV3);
+  double previous_x = odom.Step(Sample(0, 0.3, 0.3, 0.0, 0.3, 0.3), kDt).x;
+  for (int k = 0; k < 200; ++k) {
+    const double angle = (k / 10) % 2 == 0 ? 0.65 : 0.59;   // crossing 0.601 back and forth
+    const ml::OdometryStep s = odom.Step(Sample(0, 0.3, angle, 0.0, angle, 0.3), kDt);
+    EXPECT_EQ(s.geometry, ml::Geometry::kAckermann);
+    EXPECT_GT(s.vx, 0.0);
+    EXPECT_NE(s.x, previous_x);
+    previous_x = s.x;
   }
 }
 

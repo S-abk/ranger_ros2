@@ -139,7 +139,7 @@ enum class Geometry : uint8_t
   kAckermann = 0,
   kOblique = 1,
   kSpin = 2,
-  kNone = 3,   // park, unknown mode, or wheels between geometries: nothing is integrated
+  kNone = 3,   // park or an unknown mode: nothing is integrated
 };
 
 // Which reported values a cycle used.
@@ -204,10 +204,11 @@ double InnerToCentralAngle(double inner, const Limits & limits);
 //     before this change, so steady motion is unchanged).
 //  3. Otherwise a hold applies. It starts with the geometry integrated in the previous cycle and
 //     is tied to the reported mode at its start; a new reported mode ends it and starts a new one.
-//     a) after kMaxHoldSeconds: integrate R's geometry with the motion-state values;
-//     b) while a still fits the held geometry: integrate it with the measured wheel values;
-//     c) once a no longer fits it: nothing is integrated until a fits R (the held geometry is not
-//        resumed within the same hold).
+//     a) while a still fits the held geometry, for at most kMaxHoldSeconds: integrate it with the
+//        measured wheel values;
+//     b) otherwise: integrate R's geometry with the motion-state values (the model used before
+//        this change), so odometry never stops while the base reports a mode. Once a has left the
+//        held geometry, the held geometry is not resumed within the same hold.
 class OdometryIntegrator
 {
 public:

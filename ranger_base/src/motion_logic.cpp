@@ -263,14 +263,19 @@ OdometryStep OdometryIntegrator::Step(const FeedbackSample & sample, double dt)
     if (dt > 0.0) {
       hold_elapsed_ += dt;
     }
-    if (hold_elapsed_ > kMaxHoldSeconds) {
-      geometry = reported;
-      source = InputSource::kMotionState;
-    } else if (AngleFitsGeometry(held_geometry_, sample.wheel_angle, limits_)) {
+    if (hold_elapsed_ <= kMaxHoldSeconds &&
+      AngleFitsGeometry(held_geometry_, sample.wheel_angle, limits_))
+    {
       geometry = held_geometry_;
       source = InputSource::kWheels;
     } else {
-      held_geometry_ = Geometry::kNone;
+      // Time bound reached, or the wheels left the held geometry: integrate the reported mode on
+      // the motion-state values, so odometry never stops while the base reports a mode.
+      if (hold_elapsed_ <= kMaxHoldSeconds) {
+        held_geometry_ = Geometry::kNone;
+      }
+      geometry = reported;
+      source = InputSource::kMotionState;
     }
   }
 
