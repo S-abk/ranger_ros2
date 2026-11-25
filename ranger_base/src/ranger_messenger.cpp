@@ -68,15 +68,19 @@ void RangerROSMessenger::LoadParameters() {
   update_rate_ = node_->declare_parameter<int>("update_rate", 50);
   odom_topic_name_ = node_->declare_parameter<std::string>("odom_topic_name", "odom");
   publish_odom_tf_ = node_->declare_parameter<bool>("publish_odom_tf",false);
+  // Proposal, off by default (today's behaviour): a zero command keeps the base's reported
+  // oblique or spin mode so the wheels do not swing back at every stop.
+  zero_command_keeps_mode_ =
+      node_->declare_parameter<bool>("zero_command_keeps_mode", false);
 
   RCLCPP_INFO(node_->get_logger(),
       "Successfully loaded the following parameters: \n port_name: %s\n "
       "robot_model: %s\n odom_frame: %s\n base_frame: %s\n "
       "update_rate: %d\n odom_topic_name: %s\n "
-      "publish_odom_tf: %d\n",
+      "publish_odom_tf: %d\n zero_command_keeps_mode: %d\n",
       port_name_.c_str(), robot_model_.c_str(), odom_frame_.c_str(),
       base_frame_.c_str(), update_rate_, odom_topic_name_.c_str(),
-      publish_odom_tf_);
+      publish_odom_tf_, zero_command_keeps_mode_);
 
   // load robot parameters
   if (robot_model_ == "ranger_mini_v1") {
@@ -147,23 +151,30 @@ void RangerROSMessenger::LoadParameters() {
     }
   }
   parking_mode_ = false;
+
+  limits_ = motion_logic::Limits{
+      robot_params_.wheelbase, robot_params_.track, robot_params_.max_linear_speed,
+      robot_params_.max_angular_speed, robot_params_.max_steer_angle_parallel,
+      robot_params_.max_steer_angle_ackermann, robot_params_.min_turn_radius,
+      robot_params_.max_round_angle, robot_type_ == RangerSubType::kRangerMiniV1};
+  odometry_ = std::make_unique<motion_logic::OdometryIntegrator>(limits_);
 }
 
 void RangerROSMessenger::SetupSubscription() {
   // publisher
   system_state_pub_ =
-      node_->create_publisher<ranger_msgs::msg::SystemState>("/system_state", 10);
+      node_->create_publisher<ranger_msgs::msg::SystemState>(topics::kSystemState, 10);
   motion_state_pub_ =
-      node_->create_publisher<ranger_msgs::msg::MotionState>("/motion_state", 10);
+      node_->create_publisher<ranger_msgs::msg::MotionState>(topics::kMotionState, 10);
   actuator_state_pub_ =
-      node_->create_publisher<ranger_msgs::msg::ActuatorStateArray>("/actuator_state", 10);
+      node_->create_publisher<ranger_msgs::msg::ActuatorStateArray>(topics::kActuatorState, 10);
   odom_pub_ = node_->create_publisher<nav_msgs::msg::Odometry>(odom_topic_name_, 10);
   battery_state_pub_ =
-      node_->create_publisher<sensor_msgs::msg::BatteryState>("/battery_state", 10);
+      node_->create_publisher<sensor_msgs::msg::BatteryState>(topics::kBatteryState, 10);
 
   // subscriber
   motion_cmd_sub_ = node_->create_subscription<geometry_msgs::msg::Twist>(
-      "/cmd_vel", 5, std::bind(&RangerROSMessenger::TwistCmdCallback, this, std::placeholders::_1)
+      topics::kCmdVel, 5, std::bind(&RangerROSMessenger::TwistCmdCallback, this, std::placeholders::_1)
       );
   tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(node_);
 }
@@ -181,12 +192,20 @@ void RangerROSMessenger::PublishStateToROS() {
   auto state = robot_->GetRobotState();
   auto actuator_state = robot_->GetActuatorState();
 
-  // update odometry
+  // update odometry from what the base reports (never from the last command)
+  motion_logic::FeedbackSample sample;
+  sample.reported_mode = state.motion_mode_state.motion_mode;
+  sample.mode_changing = state.motion_mode_state.mode_changing != 0;
+  sample.linear_velocity = state.motion_state.linear_velocity;
+  sample.angular_velocity = state.motion_state.angular_velocity;
+  sample.steering_angle = state.motion_state.steering_angle;
+  sample.wheel_angle = actuator_state.motor_angles.angle_5;
+  sample.wheel_speed = actuator_state.motor_speeds.speed_1;
+  motion_logic::OdometryStep odometry_step{};
   {
     double dt = (current_time_ - last_time_).seconds();
-    UpdateOdometry(state.motion_state.linear_velocity,
-                   state.motion_state.angular_velocity,
-                   state.motion_state.steering_angle, dt);
+    odometry_step = odometry_->Step(sample, dt);
+    PublishOdometry(odometry_step);
     last_time_ = current_time_;
   }
 
@@ -203,13 +222,22 @@ void RangerROSMessenger::PublishStateToROS() {
     system_state_pub_->publish(system_msg);
   }
 
-  // publish motion mode
+  // publish motion mode, and what the base reports about its motion
   {
-    motion_mode_ = state.motion_mode_state.motion_mode;
-
     ranger_msgs::msg::MotionState motion_msg;
     motion_msg.header.stamp = current_time_;
     motion_msg.motion_mode = state.motion_mode_state.motion_mode;
+    motion_msg.mode_changing = sample.mode_changing;
+    motion_msg.linear_velocity = sample.linear_velocity;
+    motion_msg.angular_velocity = sample.angular_velocity;
+    motion_msg.steering_angle = sample.steering_angle;
+    motion_msg.wheel_angles = {
+        actuator_state.motor_angles.angle_5, actuator_state.motor_angles.angle_6,
+        actuator_state.motor_angles.angle_7, actuator_state.motor_angles.angle_8};
+    motion_msg.wheel_speeds = {
+        actuator_state.motor_speeds.speed_1, actuator_state.motor_speeds.speed_2,
+        actuator_state.motor_speeds.speed_3, actuator_state.motor_speeds.speed_4};
+    motion_msg.odometry_geometry = static_cast<uint8_t>(odometry_step.geometry);
 
     motion_state_pub_->publish(motion_msg);
   }
@@ -283,55 +311,9 @@ void RangerROSMessenger::PublishStateToROS() {
   }
 }
 
-void RangerROSMessenger::UpdateOdometry(double linear, double angular,
-                                        double angle, double dt) {
-  // update odometry calculations
-  if (motion_mode_ == MotionState::MOTION_MODE_DUAL_ACKERMAN) {
-    DualAckermanModel::state_type x = {position_x_, position_y_, theta_};
-    DualAckermanModel::control_type u;
-    u.v = linear;
-    u.phi = ConvertInnerAngleToCentral(angle);
-
-    boost::numeric::odeint::integrate_const(
-        boost::numeric::odeint::runge_kutta4<DualAckermanModel::state_type>(),
-        DualAckermanModel(robot_params_.wheelbase, u), x, 0.0, dt, (dt / 10.0));
-    //std::cout<<" steer: "<<angle<<" central: "<<u.phi<<std::endl;
-    position_x_ = x[0];
-    position_y_ = x[1];
-    theta_ = x[2];
-  } else if (motion_mode_ == MotionState::MOTION_MODE_PARALLEL ||
-             motion_mode_ == MotionState::MOTION_MODE_SIDE_SLIP) {
-    ParallelModel::state_type x = {position_x_, position_y_, theta_};
-    ParallelModel::control_type u;
-    u.v = linear;
-    if (motion_mode_ == MotionState::MOTION_MODE_SIDE_SLIP) {
-      u.phi = M_PI / 2.0;
-    } else {
-      u.phi = angle;
-    }
-    boost::numeric::odeint::integrate_const(
-        boost::numeric::odeint::runge_kutta4<ParallelModel::state_type>(),
-        ParallelModel(u), x, 0.0, dt, (dt / 10.0));
-
-    position_x_ = x[0];
-    position_y_ = x[1];
-    theta_ = x[2];
-  } else if (motion_mode_ == MotionState::MOTION_MODE_SPINNING) {
-    SpinningModel::state_type x = {position_x_, position_y_, theta_};
-    SpinningModel::control_type u;
-    u.w = angular;
-
-    boost::numeric::odeint::integrate_const(
-        boost::numeric::odeint::runge_kutta4<SpinningModel::state_type>(),
-        SpinningModel(u), x, 0.0, dt, (dt / 10.0));
-
-    position_x_ = x[0];
-    position_y_ = x[1];
-    theta_ = x[2];
-  }
-
+void RangerROSMessenger::PublishOdometry(const motion_logic::OdometryStep& step) {
   // update odometry topics
-  geometry_msgs::msg::Quaternion odom_quat = createQuaternionMsgFromYaw(theta_);
+  geometry_msgs::msg::Quaternion odom_quat = createQuaternionMsgFromYaw(step.theta);
 
   // publish odometry and tf messages
   nav_msgs::msg::Odometry odom_msg;
@@ -339,33 +321,14 @@ void RangerROSMessenger::UpdateOdometry(double linear, double angular,
   odom_msg.header.frame_id = odom_frame_;
   odom_msg.child_frame_id = base_frame_;
 
-  odom_msg.pose.pose.position.x = position_x_;
-  odom_msg.pose.pose.position.y = position_y_;
+  odom_msg.pose.pose.position.x = step.x;
+  odom_msg.pose.pose.position.y = step.y;
   odom_msg.pose.pose.position.z = 0.0;
   odom_msg.pose.pose.orientation = odom_quat;
 
-  if (motion_mode_ == MotionState::MOTION_MODE_DUAL_ACKERMAN) {
-    odom_msg.twist.twist.linear.x = linear;
-    odom_msg.twist.twist.linear.y = 0.0;
-    odom_msg.twist.twist.angular.z =
-        2 * linear * std::sin(ConvertInnerAngleToCentral(angle)) /
-        robot_params_.wheelbase;
-  } else if (motion_mode_ == MotionState::MOTION_MODE_PARALLEL ||
-             motion_mode_ == MotionState::MOTION_MODE_SIDE_SLIP) {
-    double phi = angle;
-
-    if (motion_mode_ == MotionState::MOTION_MODE_SIDE_SLIP) {
-      phi = M_PI / 2.0;
-    }
-    odom_msg.twist.twist.linear.x = linear * std::cos(phi);
-    odom_msg.twist.twist.linear.y = linear * std::sin(phi);
-
-    odom_msg.twist.twist.angular.z = 0;
-  } else if (motion_mode_ == MotionState::MOTION_MODE_SPINNING) {
-    odom_msg.twist.twist.linear.x = 0;
-    odom_msg.twist.twist.linear.y = 0;
-    odom_msg.twist.twist.angular.z = angular;
-  }
+  odom_msg.twist.twist.linear.x = step.vx;
+  odom_msg.twist.twist.linear.y = step.vy;
+  odom_msg.twist.twist.angular.z = step.wz;
 
   odom_pub_->publish(odom_msg);
 
@@ -376,8 +339,8 @@ void RangerROSMessenger::UpdateOdometry(double linear, double angular,
     tf_msg.header.frame_id = odom_frame_;
     tf_msg.child_frame_id = base_frame_;
 
-    tf_msg.transform.translation.x = position_x_;
-    tf_msg.transform.translation.y = position_y_;
+    tf_msg.transform.translation.x = step.x;
+    tf_msg.transform.translation.y = step.y;
     tf_msg.transform.translation.z = 0.0;
     tf_msg.transform.rotation = odom_quat;
 
@@ -385,108 +348,56 @@ void RangerROSMessenger::UpdateOdometry(double linear, double angular,
   }
 }
 
-void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr msg) {
-  double steer_cmd;
-  double radius;
+namespace {
+// Sends the commands of the pure logic through the SDK.
+class RobotCommandSink : public motion_logic::CommandSink {
+ public:
+  explicit RobotCommandSink(RangerRobot& robot) : robot_(robot) {}
+  void SetMotionMode(uint8_t mode) override { robot_.SetMotionMode(mode); }
+  void SetMotionCommand(double linear, double steering, double angular) override {
+    robot_.SetMotionCommand(linear, steering, angular);
+  }
 
-  // analyze Twist msg and switch motion_mode
+ private:
+  RangerRobot& robot_;
+};
+}  // namespace
+
+void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr msg) {
   // check for parking mode, only applicable to RangerMiniV2
   if (parking_mode_ && robot_type_ == RangerSubType::kRangerMiniV2) {
     return;
-  } else if (msg->linear.y != 0) {
-    if (msg->linear.x == 0.0 && robot_type_ == RangerSubType::kRangerMiniV1) {
-      motion_mode_ = MotionState::MOTION_MODE_SIDE_SLIP;
-      robot_->SetMotionMode(MotionState::MOTION_MODE_SIDE_SLIP);
-    } else {
-      motion_mode_ = MotionState::MOTION_MODE_PARALLEL;
-      robot_->SetMotionMode(MotionState::MOTION_MODE_PARALLEL);
-    }
-  } else {
-    steer_cmd = CalculateSteeringAngle(*msg, radius);
-    // Use minimum turn radius to switch between dual ackerman and spinning mode
-    if (radius < robot_params_.min_turn_radius) {
-      motion_mode_ = MotionState::MOTION_MODE_SPINNING;
-      robot_->SetMotionMode(MotionState::MOTION_MODE_SPINNING);
-    } else {
-      motion_mode_ = MotionState::MOTION_MODE_DUAL_ACKERMAN;
-      robot_->SetMotionMode(MotionState::MOTION_MODE_DUAL_ACKERMAN);
-    }
   }
 
-  // send motion command to robot
-  switch (motion_mode_) {
-    case MotionState::MOTION_MODE_DUAL_ACKERMAN: {
-      if (steer_cmd > robot_params_.max_steer_angle_ackermann) {
-        steer_cmd = robot_params_.max_steer_angle_ackermann;
-      }
-      if (steer_cmd < -robot_params_.max_steer_angle_ackermann) {
-        steer_cmd = -robot_params_.max_steer_angle_ackermann;
-      }
-      robot_->SetMotionCommand(msg->linear.x, steer_cmd);
-      break;
-    }
-    case MotionState::MOTION_MODE_PARALLEL: {
-      steer_cmd = atan(msg->linear.y / msg->linear.x);
-
-      static double last_nonzero_x = 1.0;
-
-      if (msg->linear.x != 0.0) {
-          last_nonzero_x = msg->linear.x;
-      }
-
-      if (std::signbit(msg->linear.x))
-      {
-        steer_cmd = -steer_cmd;
-      }
-
-      if (steer_cmd > robot_params_.max_steer_angle_parallel) {
-        steer_cmd = robot_params_.max_steer_angle_parallel;
-      }
-      if (steer_cmd < -robot_params_.max_steer_angle_parallel) {
-        steer_cmd = -robot_params_.max_steer_angle_parallel;
-      }
-      double vel = 1.0;
-
-      if (msg->linear.x == 0.0 && msg->linear.y != 0.0) {
-          // std::cout << "MOTION_MODE_SIDE_SLIP" << std::endl;
-
-          if (std::signbit(last_nonzero_x)) {
-              steer_cmd = -std::abs(steer_cmd);
-          } else {
-              steer_cmd = std::abs(steer_cmd);
-          }
-          vel = msg->linear.y >= 0 ? 1.0 : -1.0;
-      } else {
-          vel = msg->linear.x >= 0 ? 1.0 : -1.0;
-      }
-      robot_->SetMotionCommand(vel * sqrt(msg->linear.x * msg->linear.x +
-                                          msg->linear.y * msg->linear.y),
-                               steer_cmd);
-      break;
-    }
-    case MotionState::MOTION_MODE_SPINNING: {
-      double a_v = msg->angular.z;
-      if (a_v > robot_params_.max_angular_speed) {
-        a_v = robot_params_.max_angular_speed;
-      }
-      if (a_v < -robot_params_.max_angular_speed) {
-        a_v = -robot_params_.max_angular_speed;
-      }
-      robot_->SetMotionCommand(0.0, 0.0, a_v);
-      break;
-    }
-    case MotionState::MOTION_MODE_SIDE_SLIP: {
-      double l_v = msg->linear.y;
-      if (l_v > robot_params_.max_linear_speed) {
-        l_v = robot_params_.max_linear_speed;
-      }
-      if (l_v < -robot_params_.max_linear_speed) {
-        l_v = -robot_params_.max_linear_speed;
-      }
-      robot_->SetMotionCommand(0.0, 0.0, l_v);
-      break;
-    }
+  // The command depends on this twist only. With zero_command_keeps_mode, a zero twist also
+  // reads the base's reported mode and wheel angle (its state, not an earlier command).
+  motion_logic::ZeroCommandPolicy zero_policy{false, 0, 0.0};
+  if (zero_command_keeps_mode_) {
+    zero_policy.keep_reported_mode = true;
+    zero_policy.reported_mode = robot_->GetRobotState().motion_mode_state.motion_mode;
+    zero_policy.measured_wheel_angle = robot_->GetActuatorState().motor_angles.angle_5;
   }
+  const motion_logic::MotionCommand command = motion_logic::CommandFromTwist(
+      msg->linear.x, msg->linear.y, msg->angular.z, limits_, zero_policy);
+
+  if (!command.valid) {
+    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000,
+                         "Ignoring a velocity command that is not finite");
+    return;
+  }
+  if (command.dropped != motion_logic::kDropNone) {
+    RCLCPP_WARN_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 5000,
+        "Velocity command (%.3f, %.3f, %.3f): motion mode %u cannot realise%s%s%s; "
+        "commanded as zero",
+        msg->linear.x, msg->linear.y, msg->angular.z, static_cast<unsigned>(command.mode),
+        (command.dropped & motion_logic::kDropLinearX) ? " linear.x" : "",
+        (command.dropped & motion_logic::kDropLinearY) ? " linear.y" : "",
+        (command.dropped & motion_logic::kDropAngularZ) ? " angular.z" : "");
+  }
+
+  RobotCommandSink sink(*robot_);
+  motion_logic::DispatchCommand(command, sink);
 }
 
 geometry_msgs::msg::Quaternion RangerROSMessenger::createQuaternionMsgFromYaw(double yaw) {
@@ -495,52 +406,4 @@ geometry_msgs::msg::Quaternion RangerROSMessenger::createQuaternionMsgFromYaw(do
     return tf2::toMsg(q);
 }
 
-double RangerROSMessenger::CalculateSteeringAngle(geometry_msgs::msg::Twist msg,
-                                                  double& radius) {
-  double linear = std::abs(msg.linear.x);
-  double angular = std::abs(msg.angular.z);
-
-  if (angular < 1e-6) {
-    radius = std::numeric_limits<double>::infinity();
-    return 0.0;
-  }
-  // Circular motion
-  radius = linear / angular;
-  int k = (msg.angular.z * msg.linear.x) >= 0 ? 1 : -1;
-
-  double l, w, phi_i, x;
-  l = robot_params_.wheelbase;
-  w = robot_params_.track;
-  x = sqrt(radius * radius + (l / 2) * (l / 2));
-  // phi_i = atan((l / 2) / (x - w / 2));
-  phi_i = atan((l / 2) / radius);
-
-  const double max_phi_rad = 40.0 * M_PI / 180.0;
-  phi_i = std::min(phi_i, max_phi_rad);
-
-  return k * phi_i;
-}
-
-double RangerROSMessenger::ConvertInnerAngleToCentral(double angle) {
-  double phi = 0;
-  double phi_i = std::abs(angle);
-
-  phi = std::atan(robot_params_.wheelbase * std::sin(phi_i) /
-                  (robot_params_.wheelbase * std::cos(phi_i) +
-                   robot_params_.track * std::sin(phi_i)));
-
-  phi *= angle >= 0 ? 1.0 : -1.0;
-  return phi;
-}
-
-double RangerROSMessenger::ConvertCentralAngleToInner(double angle) {
-  double phi = std::abs(angle);
-  double phi_i = 0;
-
-  phi_i = std::atan(robot_params_.wheelbase * std::sin(phi) /
-                    (robot_params_.wheelbase * std::cos(phi) -
-                     robot_params_.track * std::sin(phi)));
-  phi_i *= angle >= 0 ? 1.0 : -1.0;
-  return phi_i;
-}
 }  // namespace westonrobot
