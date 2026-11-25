@@ -193,47 +193,30 @@ def compute_wheel_commands_dual_ackermann(linear_x: float, inner_phi: float):
     )
 
 
-def compute_wheel_commands_parallel(linear_x: float, linear_y: float,
-                                    last_nonzero_x: float):
+def compute_wheel_commands_parallel(linear_x: float, linear_y: float):
     """Compute all 8 commands for PARALLEL mode.
 
-    All 4 wheels point in the same direction, common angle =
-    atan2(linear_y, linear_x). When linear_x == 0 (pure
-    side-slip), the angle's sign is taken relative to the LAST
-    nonzero linear_x so the robot keeps moving in its
-    "established" forward direction.
+    Same mapping as the real driver (CommandFromTwist in
+    ranger_base/src/motion_logic.cpp), stateless:
+      linear_x != 0: angle = atan(y / x) in (-pi/2, pi/2),
+                     speed = sign(x) * hypot(x, y);
+      linear_x == 0: angle = +MAX_STEER_PARALLEL, speed = y.
+    Motion = speed * (cos, sin)(angle) has the signs of (x, y).
+    The angle wraps at pure sideways: a tiny x of the other sign asks
+    for -90 degrees instead of +90.
 
     Returns (WheelCommands, used_angle, used_speed) for
     optional debug logging.
     """
-    # Direction & magnitude
     if linear_x == 0.0 and linear_y == 0.0:
         return WheelCommands(), 0.0, 0.0
 
-    if linear_x == 0.0:
-        # Pure side-slip case.
-        # Sign convention: see ranger_messenger.cpp L437-461.
-        # steer_cmd = atan(y/x) is undefined at x=0; the real driver
-        # uses |atan(y/x)| with sign = sign(last_nonzero_x).
-        # Effective velocity sign comes from linear_y.
-        steer_cmd = math.atan(linear_y / 1e-9 if linear_y > 0 else
-                               -linear_y / 1e-9)  # +pi/2 or -pi/2
-        # Better, exact: pi/2 for sideways drive, signed by last x
-        steer_cmd = math.pi / 2.0
-        if last_nonzero_x < 0:
-            steer_cmd = -steer_cmd
-        speed = abs(linear_y)
-        if linear_y < 0:
-            speed = -speed if last_nonzero_x >= 0 else speed
-        else:
-            speed = speed if last_nonzero_x >= 0 else -speed
+    if linear_x != 0.0:
+        steer_cmd = math.atan(linear_y / linear_x)
+        speed = math.copysign(math.hypot(linear_x, linear_y), linear_x)
     else:
-        # Standard parallel: angle from atan2, magnitude from hypot.
-        steer_cmd = math.atan2(linear_y, linear_x)
-        if linear_x < 0:
-            steer_cmd = -steer_cmd  # mirror sign for reverse
-        vmag = math.hypot(linear_x, linear_y)
-        speed = vmag if linear_x >= 0 else -vmag
+        steer_cmd = MAX_STEER_PARALLEL
+        speed = linear_y
 
     # Clamp to parallel-mode max angle
     steer_cmd = max(-MAX_STEER_PARALLEL,
@@ -357,7 +340,6 @@ class SimMessenger(Node):
         self._dt_sum = 0.0
         self._dt_max = 0.0
         self._dt_min = float('inf')
-        self.last_nonzero_x = 1.0   # for parallel side-slip sign
         self._last_used_angle = 0.0     # parallel mode odom
         self._last_used_speed = 0.0     # parallel mode odom
         self._last_used_angular_z = 0.0 # spinning mode odom
@@ -449,9 +431,6 @@ class SimMessenger(Node):
     def _cmd_cb(self, msg: Twist):
         self.last_twist = msg
 
-        if msg.linear.x != 0.0:
-            self.last_nonzero_x = msg.linear.x
-
         # Mode selection — port of TwistCmdCallback (lines 388-414)
         # NOTE: the v1-side-slip branch is skipped (we're v3-only).
         if msg.linear.y != 0.0:
@@ -517,7 +496,7 @@ class SimMessenger(Node):
 
         elif self.motion_mode == MotionMode.PARALLEL:
             wc, used_angle, used_speed = compute_wheel_commands_parallel(
-                msg.linear.x, msg.linear.y, self.last_nonzero_x
+                msg.linear.x, msg.linear.y
             )
             self._integrate_parallel(used_speed, used_angle, dt)
             self._last_used_angle = used_angle
@@ -704,6 +683,17 @@ class SimMessenger(Node):
         mot_msg = MotionState()
         mot_msg.header.stamp = stamp
         mot_msg.motion_mode  = int(self.motion_mode)
+        # Appended fields (sim: the commanded values stand in for the reported ones).
+        mot_msg.mode_changing = False
+        if self.motion_mode == MotionMode.PARALLEL:
+            mot_msg.linear_velocity = float(self._last_used_speed)
+            mot_msg.steering_angle = float(self._last_used_angle)
+        elif self.motion_mode == MotionMode.SPINNING:
+            mot_msg.angular_velocity = float(self._last_used_angular_z)
+        elif self.motion_mode == MotionMode.DUAL_ACKERMAN:
+            mot_msg.linear_velocity = float(self.last_twist.linear.x)
+            mot_msg.steering_angle = float(self.last_inner_phi)
+        mot_msg.odometry_geometry = int(self.motion_mode)
         self.motion_state_pub.publish(mot_msg)
 
         # ActuatorStateArray (8 actuators)
