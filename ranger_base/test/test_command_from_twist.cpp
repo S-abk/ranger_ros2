@@ -130,12 +130,12 @@ TEST(CommandFromTwist, SignsMatchTwistOverGrid)
         uint8_t mode = ml::kModeAckermann;
         uint8_t dropped = ml::kDropNone;
         const bool any = vx != 0.0 || vy != 0.0 || wz != 0.0;
+        const bool spin = std::abs(wz) >= ml::kMinAngularForArc &&
+          std::abs(vx) / std::abs(wz) < kV3.min_turn_radius;
         if (vy != 0.0) {
           mode = ml::kModeOblique;
           dropped = wz != 0.0 ? ml::kDropAngularZ : ml::kDropNone;
-        } else if (std::abs(wz) >= ml::kMinAngularForArc &&
-          std::abs(vx) / std::abs(wz) < kV3.min_turn_radius)
-        {
+        } else if (spin) {
           mode = ml::kModeSpin;
           dropped = vx != 0.0 ? ml::kDropLinearX : ml::kDropNone;
         } else if (any && wz != 0.0 && std::abs(wz) < ml::kMinAngularForArc) {
