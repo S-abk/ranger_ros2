@@ -122,6 +122,26 @@ TEST(CommandFromTwist, SignsMatchTwistOverGrid)
       for (double wz : GridValues()) {
         const ml::MotionCommand c = Cmd(vx, vy, wz);
         ASSERT_TRUE(c.valid);
+        SCOPED_TRACE(::testing::Message() << "(" << vx << ", " << vy << ", " << wz << ")");
+        // The mode follows the case table, and exactly the components that mode cannot
+        // realise are dropped: oblique only the turn, spin only the forward part, Ackermann only
+        // a turn below kMinAngularForArc.
+        uint8_t mode = ml::kModeAckermann;
+        uint8_t dropped = ml::kDropNone;
+        const bool any = vx != 0.0 || vy != 0.0 || wz != 0.0;
+        if (vy != 0.0) {
+          mode = ml::kModeOblique;
+          dropped = wz != 0.0 ? ml::kDropAngularZ : ml::kDropNone;
+        } else if (std::abs(wz) >= ml::kMinAngularForArc &&
+          std::abs(vx) / std::abs(wz) < kV3.min_turn_radius)
+        {
+          mode = ml::kModeSpin;
+          dropped = vx != 0.0 ? ml::kDropLinearX : ml::kDropNone;
+        } else if (any && wz != 0.0 && std::abs(wz) < ml::kMinAngularForArc) {
+          dropped = ml::kDropAngularZ;
+        }
+        EXPECT_EQ(c.mode, mode);
+        EXPECT_EQ(c.dropped, dropped);
         const Motion m = Realised(c, kV3);
         const double residue = c.mode == ml::kModeOblique ?
           std::abs(c.speed) * std::cos(kV3.max_steer_angle_parallel) + 1e-15 : 0.0;
@@ -209,6 +229,8 @@ TEST(CommandFromTwist, SignCaseTable)
     {0.05, -0.05, 0.0, 1, -785, 70, 0},      // forward-right: unverified (negative angle)
     {0.0, 0.05, 0.0, 1, 1570, 50, 0},        // pure left: seen (B, C, C2, y stops)
     {0.0, -0.05, 0.0, 1, 1570, -50, 0},      // pure right: unverified
+    {-0.001, 0.05, 0.0, 1, -1550, -50, 0},   // near-sideways left, x of the other sign: unverified
+    {0.001, -0.05, 0.0, 1, -1550, 50, 0},    // near-sideways right, x of the other sign: unverified
     {0.0, 0.0, 0.2, 2, 0, 0, 200},           // spin anticlockwise: seen (E)
     {0.0, 0.0, -0.2, 2, 0, 0, -200},         // spin clockwise: unverified
     {0.05, 0.0, 0.08, 0, 376, 50, 0},        // arc forward-left: unverified
