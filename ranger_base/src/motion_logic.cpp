@@ -42,6 +42,8 @@ namespace motion_logic
 namespace
 {
 
+constexpr double kHalfPi = 1.57079632679489661923;   // M_PI / 2, as the driver used before
+
 double Clamp(double value, double limit, bool * clamped)
 {
   if (value > limit) {
@@ -246,8 +248,14 @@ OdometryStep OdometryIntegrator::Step(const FeedbackSample & sample, double dt)
   const Geometry reported = GeometryOfReportedMode(sample.reported_mode);
   Geometry geometry = Geometry::kNone;
   InputSource source = InputSource::kNothing;
+  const bool side_slip = limits_.side_slip_mode && sample.reported_mode == kModeThree;
 
-  if (reported == Geometry::kNone) {
+  if (side_slip) {
+    // Ranger Mini 1.0 side slip, as before: oblique at +90 degrees on the reported speed.
+    geometry = Geometry::kOblique;
+    source = InputSource::kMotionState;
+    holding_ = false;
+  } else if (reported == Geometry::kNone) {
     holding_ = false;
   } else if (AngleFitsGeometry(reported, sample.wheel_angle, limits_)) {
     geometry = reported;
@@ -281,7 +289,8 @@ OdometryStep OdometryIntegrator::Step(const FeedbackSample & sample, double dt)
 
   const bool wheels = source == InputSource::kWheels;
   const double speed = wheels ? sample.wheel_speed : sample.linear_velocity;
-  const double angle = wheels ? sample.wheel_angle : sample.steering_angle;
+  const double angle =
+    side_slip ? kHalfPi : (wheels ? sample.wheel_angle : sample.steering_angle);
   double vx = 0.0;
   double vy = 0.0;
   double wz = 0.0;

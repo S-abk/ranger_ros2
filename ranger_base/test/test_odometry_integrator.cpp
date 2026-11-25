@@ -335,6 +335,21 @@ TEST(OdometryIntegrator, ParkIntegratesNothing)
   EXPECT_EQ(odom.Step(Sample(9, 0.3, 0.0, 0.0, 0.0, 0.3), kDt).geometry, ml::Geometry::kNone);
 }
 
+TEST(OdometryIntegrator, MiniV1SideSlipIsObliqueAtNinetyDegrees)
+{
+  const ml::Limits v1 = ml::LimitsFromParams<westonrobot::RangerMiniV1Params>(true);
+  ml::OdometryIntegrator odom(v1);
+  const ml::OdometryStep s = odom.Step(Sample(3, 0.2, 0.0, 0.0, 0.0, 0.2), kDt);
+  EXPECT_EQ(s.geometry, ml::Geometry::kOblique);
+  EXPECT_EQ(s.source, ml::InputSource::kMotionState);
+  EXPECT_EQ(s.vy, 0.2 * std::sin(1.57079632679489661923));
+  EXPECT_GT(s.y, 0.0);
+  EXPECT_EQ(s.theta, 0.0);
+  // On the Mini 3.0, 3 is park: nothing.
+  ml::OdometryIntegrator v3(kV3);
+  EXPECT_EQ(v3.Step(Sample(3, 0.2, 0.0, 0.0, 0.0, 0.2), kDt).geometry, ml::Geometry::kNone);
+}
+
 TEST(OdometryIntegrator, SwitchingFlagDoesNotChangeTheResult)
 {
   ml::OdometryIntegrator a(kV3);

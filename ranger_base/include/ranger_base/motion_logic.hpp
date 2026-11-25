@@ -199,7 +199,8 @@ double InnerToCentralAngle(double inner, const Limits & limits);
 // Integrates odometry from what the base reports, never from what was commanded.
 //
 // Each cycle, with R the reported mode and a the measured wheel angle:
-//  1. R is park (3) or unknown: nothing is integrated.
+//  1. R is park (3) or unknown: nothing is integrated. On the Ranger Mini 1.0 (side_slip_mode),
+//     3 is side slip and is integrated as before: oblique at +90 degrees on the reported speed.
 //  2. a fits R's geometry: integrate R's geometry with the motion-state values (the model used
 //     before this change, so steady motion is unchanged).
 //  3. Otherwise a hold applies. It starts with the geometry integrated in the previous cycle and
