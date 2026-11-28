@@ -179,7 +179,9 @@ inline Result Run(const std::vector<Row> & rows, const ml::Limits & limits)
 }
 
 // Heading tolerance against the recorded gyroscope, fixed before the integrator was written.
-// The gyro columns are already bias-corrected and shifted by 35 ms.
+// The gyro columns are already bias-corrected and aligned with the reported feedback:
+// each row holds the gyro 35 ms before that row's stamp, because the reported spin
+// rate trails the gyro by about 35 ms.
 struct Inv2
 {
   double max_abs_err = 0.0;
