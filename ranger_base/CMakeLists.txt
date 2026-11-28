@@ -44,11 +44,15 @@ set(DEPENDENCIES
   "tf2_geometry_msgs"
 )
 
+# pure motion logic: no ROS, no CAN (unit-tested below)
+add_library(ranger_base_logic STATIC src/motion_logic.cpp)
+set_target_properties(ranger_base_logic PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_executable(ranger_base_node
     src/ranger_base_node.cpp
     src/ranger_messenger.cpp)
 
-target_link_libraries(ranger_base_node ugv_sdk)
+target_link_libraries(ranger_base_node ranger_base_logic ugv_sdk)
 ament_target_dependencies(ranger_base_node ${DEPENDENCIES})
 
 install(TARGETS ranger_base_node
@@ -69,6 +73,26 @@ if(BUILD_TESTING)
   # uncomment the line when this package is not in a git repo
   #set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_motion_logic
+    test/test_command_from_twist.cpp
+    test/test_odometry_integrator.cpp)
+  target_link_libraries(test_motion_logic ranger_base_logic)
+
+  ament_add_gtest(test_replay_recordings test/test_replay_recordings.cpp)
+  target_link_libraries(test_replay_recordings ranger_base_logic)
+  target_compile_definitions(test_replay_recordings PRIVATE
+    REPLAY_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/replay")
+
+  ament_add_gtest(test_contract test/test_contract.cpp)
+  target_compile_definitions(test_contract PRIVATE
+    MSG_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/msg_jazzy"
+    RANGER_MSGS_MSG_DIR="${ranger_msgs_DIR}/../msg")
+
+  # offline replay tool (not installed)
+  add_executable(odom_replay test/odom_replay.cpp)
+  target_link_libraries(odom_replay ranger_base_logic)
 endif()
 
 ament_package()

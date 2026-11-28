@@ -36,6 +36,7 @@
 //user msg include
 #include <ranger_msgs/msg/system_state.hpp>
 #include <ranger_msgs/msg/motion_state.hpp>
+#include <ranger_msgs/msg/motion_feedback.hpp>
 #include <ranger_msgs/msg/actuator_state_array.hpp>
 
 #include "ranger_msgs/msg/actuator_state.hpp"
@@ -43,6 +44,8 @@
 #include "ranger_msgs/msg/motor_state.hpp"
 
 #include "ranger_base/ranger_params.hpp"
+#include "ranger_base/motion_logic.hpp"
+#include "ranger_base/topic_names.hpp"
 
 namespace westonrobot {
 class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenger>
@@ -73,12 +76,8 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
   void PublishStateToROS();
   void PublishSimStateToROS(double linear, double angular);
   void TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr msg);
-  double CalculateSteeringAngle(geometry_msgs::msg::Twist msg, double& radius);
-  void UpdateOdometry(double linear, double angular, double angle, double dt);
+  void PublishOdometry(const motion_logic::OdometryStep& step);
   geometry_msgs::msg::Quaternion createQuaternionMsgFromYaw(double yaw);
-
-  double ConvertInnerAngleToCentral(double angle);
-  double ConvertCentralAngleToInner(double angle);
 
   std::shared_ptr<rclcpp::Node> node_;
   std::shared_ptr<RangerRobot> robot_;
@@ -96,12 +95,17 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
   std::string odom_topic_name_;
   int update_rate_;
   bool publish_odom_tf_;
+  bool zero_command_keeps_mode_ = false;
 
-  uint8_t motion_mode_ = 0;
   bool parking_mode_ = false;
+
+  // pure motion logic (motion_logic.hpp): limits from ranger_params.hpp, odometry integrator
+  motion_logic::Limits limits_{};
+  std::unique_ptr<motion_logic::OdometryIntegrator> odometry_;
 
   rclcpp::Publisher<ranger_msgs::msg::SystemState>::SharedPtr system_state_pub_;
   rclcpp::Publisher<ranger_msgs::msg::MotionState>::SharedPtr motion_state_pub_;
+  rclcpp::Publisher<ranger_msgs::msg::MotionFeedback>::SharedPtr motion_feedback_pub_;
   rclcpp::Publisher<ranger_msgs::msg::ActuatorStateArray>::SharedPtr actuator_state_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_state_pub_;
@@ -113,9 +117,6 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
   // odom variables
   rclcpp::Time last_time_;
   rclcpp::Time current_time_;
-  double position_x_ = 0.0;
-  double position_y_ = 0.0;
-  double theta_ = 0.0;
 };
 }  // namespace westonrobot
 

@@ -20,6 +20,7 @@ set(msg_file
 "msg/ActuatorState.msg"
 "msg/ActuatorStateArray.msg"
 "msg/DriverState.msg"
+"msg/MotionFeedback.msg"
 "msg/MotionState.msg"
 "msg/MotorState.msg"
 "msg/SystemState.msg"
